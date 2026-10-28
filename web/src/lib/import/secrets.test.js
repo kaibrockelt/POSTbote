@@ -36,6 +36,13 @@ test('secrets become variables', () => {
   );
 });
 
+test('cookie templates without values are no secret', () => {
+  const doc = { headers: [{ key: 'Cookie', value: 'session=; theme=' }], params: [] };
+  assert.deepEqual(extractSecrets(doc), []);
+  const real = { headers: [{ key: 'Cookie', value: 'session=abc' }], params: [] };
+  assert.deepEqual(extractSecrets(real).map((f) => f.key), ['cookie']);
+});
+
 test('secret form fields', () => {
   const doc = { headers: [], params: [], body: { type: 'form', fields: [{ key: 'client_id', value: 'abc' }, { key: 'client_secret', value: 'ssh' }] } };
   assert.deepEqual(extractSecrets(doc).map((f) => [f.key, f.value]), [['clientSecret', 'ssh']]);

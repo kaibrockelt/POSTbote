@@ -39,6 +39,8 @@ export function extractSecrets(doc, taken = new Map()) {
 
   for (const h of doc.headers || []) {
     if (!SECRET_HEADERS.test(h.key) || !h.value || hasVar(h.value)) continue;
+    // a cookie template like "session=" carries no secret yet
+    if (/^cookie$/i.test(h.key) && h.value.split(';').every((c) => !c.split('=').slice(1).join('=').trim())) continue;
     // keep the scheme visible: "Bearer {{token}}"
     const m = h.value.match(/^(Bearer|Token|Basic|Digest|ApiKey)\s+(.+)$/i);
     if (m) h.value = `${m[1]} ${use(m[1].toLowerCase() === 'basic' ? 'basicAuth' : 'token', m[2], `${h.key} header`)}`;
