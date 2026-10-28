@@ -1,4 +1,5 @@
 <script>
+  import FolderPlusIcon from './FolderPlusIcon.svelte';
   import TreeFolder from './TreeFolder.svelte';
   import { app, select, isDirty, openMenu } from '../lib/state.svelte.js';
   import {
@@ -79,7 +80,7 @@
     <button class="label" onclick={() => select({ kind: 'folder', path: folder.path })}>📁 {folder.label || folder.name}</button>
     <span class="actions">
       <button class="icon" title="New request" onclick={() => newRequest(folder.path)}>＋</button>
-      <button class="icon" title="New subfolder" onclick={() => newFolder(folder.path)}>⊞</button>
+      <button class="icon" title="New subfolder" onclick={() => newFolder(folder.path)}><FolderPlusIcon /></button>
       <button class="icon" title="Rename" onclick={() => moveFolder(folder.path)}>✎</button>
       <button class="icon" title="Delete" onclick={() => deleteFolder(folder.path)}>🗑</button>
     </span>

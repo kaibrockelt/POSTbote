@@ -1,4 +1,5 @@
 <script>
+  import FolderPlusIcon from './FolderPlusIcon.svelte';
   import TreeFolder from './TreeFolder.svelte';
   import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
@@ -69,7 +70,7 @@
         <span>Requests</span>
         <span class="actions">
           <button class="icon" title="New request" onclick={() => act.newRequest()}>＋</button>
-          <button class="icon" title="New folder" onclick={() => act.newFolder()}>⊞</button>
+          <button class="icon" title="New folder" onclick={() => act.newFolder()}><FolderPlusIcon /></button>
         </span>
       </div>
       <input class="filter" placeholder="Filter: name, method, URL…" bind:value={filter} onkeydown={(e) => e.key === 'Escape' && (filter = '')} />
