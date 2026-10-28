@@ -6,11 +6,13 @@
 // - collection importers: files chosen in "Add a collection" → a new collection
 //     { id, label, accept: ['.json'], detect(input) → bool,
 //       parse(inputs) → result (see build.js) }
-//     inputs: [{ name, text, json? }] – one collection plus e.g. environments
+//     inputs: [{ name, text, json? }] – one collection plus e.g. environments;
+//     `json` is the parsed JSON or YAML document (undefined if neither)
 //
 // Docs use the shapes of parseRequest()/parseFolder() in format.js, so the
 // one serializer there writes the files (build.js for collections).
 
+import { parseYaml } from '../format.js';
 import { curl } from './curl.js';
 import { postman } from './postman.js';
 
@@ -26,19 +28,24 @@ export function importRequest(text) {
   return { format: imp.label, doc, warnings };
 }
 
-/** inputs: [{ name, text }]; JSON files are parsed once for all detectors. */
+/** inputs: [{ name, text }]; JSON and YAML files are parsed once for all detectors. */
 export function importCollection(inputs) {
-  const all = inputs.map((i) => {
-    try {
-      return { ...i, json: JSON.parse(i.text) };
-    } catch {
-      return { ...i, json: undefined };
-    }
-  });
+  const all = inputs.map((i) => ({ ...i, json: parseData(i.text, i.name) }));
   const imp = collectionImporters.find((i) => all.some((x) => i.detect(x)));
   if (!imp) throw new Error(`Unrecognised file. Supported: ${collectionImporters.map((i) => i.label).join(', ')}.`);
   const result = imp.parse(all);
   return { format: imp.label, warnings: [], ...result };
+}
+
+function parseData(text, name = '') {
+  try {
+    return JSON.parse(text);
+  } catch {
+    // YAML only for .yaml/.yml or documents that start like one (e.g. "openapi: 3.0.0")
+    if (!/\.ya?ml$/i.test(name) && !/^\s*(%YAML|---|[A-Za-z_][\w-]*:)/.test(text)) return undefined;
+    const { doc, error } = parseYaml(text);
+    return error || typeof doc !== 'object' ? undefined : doc;
+  }
 }
 
 /** Request name from method and URL path, e.g. "GET users/{id}". */
