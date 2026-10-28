@@ -32,7 +32,13 @@ export function importRequest(text) {
 export function importCollection(inputs) {
   const all = inputs.map((i) => ({ ...i, json: parseData(i.text, i.name) }));
   const imp = collectionImporters.find((i) => all.some((x) => i.detect(x)));
-  if (!imp) throw new Error(`Unrecognised file. Supported: ${collectionImporters.map((i) => i.label).join(', ')}.`);
+  if (!imp) {
+    const names = all.map((x) => x.name).join(', ');
+    throw new Error(
+      `${names}: not a collection or API description. Supported: ${collectionImporters.map((i) => i.label).join(', ')}. ` +
+        'Files that are only referenced (e.g. shared schemas via $ref) must be selected together with the main file.',
+    );
+  }
   const result = imp.parse(all);
   return { format: imp.label, warnings: [], ...result };
 }
