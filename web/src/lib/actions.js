@@ -39,10 +39,25 @@ const guard =
 
 /** Keeps runner step references valid after files were moved. */
 function rewriteRefs(moves) {
-  for (const [path, text] of Object.entries(app.files)) {
-    if (!path.endsWith(RUNNER_EXT)) continue;
+  // runners reference requests; workflows reference requests and other workflows
+  const rewrite = (path, text) => {
+    if (path.endsWith(GRAPH_EXT)) {
+      const { doc } = parseGraph(text);
+      if (!doc) return null;
+      let changed = false;
+      for (const n of doc.nodes) {
+        for (const key of ['request', 'workflow']) {
+          if (moves.has(n[key])) {
+            n[key] = moves.get(n[key]);
+            changed = true;
+          }
+        }
+      }
+      return changed ? serializeGraph(doc) : null;
+    }
+    if (!path.endsWith(RUNNER_EXT)) return null;
     const { doc } = parseWorkflow(text);
-    if (!doc) continue;
+    if (!doc) return null;
     let changed = false;
     for (const s of doc.steps) {
       if (moves.has(s.request)) {
@@ -50,7 +65,16 @@ function rewriteRefs(moves) {
         changed = true;
       }
     }
-    if (changed) write(path, serializeWorkflow(doc));
+    return changed ? serializeWorkflow(doc) : null;
+  };
+  for (const [path, text] of Object.entries(app.files)) {
+    const next = rewrite(path, text);
+    if (next != null) write(path, next);
+  }
+  // unsaved versions follow too, or saving them would bring the old paths back
+  for (const [path, text] of Object.entries(app.drafts)) {
+    const next = rewrite(path, text);
+    if (next != null) setDraft(path, next);
   }
 }
 
@@ -94,7 +118,8 @@ export const newFolder = guard(async (dir = 'requests') => {
   for (let i = 2; Object.keys(app.files).some((p) => p.startsWith(folder + '/')); i++) folder = `${dir}/${slug(name)}-${i}`;
   // a folder exists as long as it contains a file; _folder.yaml keeps empty ones alive (also in git)
   write(`${folder}/${FOLDER_FILE}`, serializeFolder({ name, variables: [], headers: [], auth: { type: 'inherit' }, scripts: {} }));
-  select({ kind: 'folder', path: folder });
+  // folder settings (headers, auth, …) only exist for request folders
+  if (folder.startsWith('requests/')) select({ kind: 'folder', path: folder });
 });
 
 export const renameRequest = guard(async (path) => {
@@ -161,6 +186,15 @@ export const moveRequest = guard(async (path, dir) => {
   rewriteRefs(new Map([[path, to]]));
 });
 
+/** Moves a runner or workflow file into another folder of its section. */
+export const moveFile = guard(async (path, dir) => {
+  if (dirname(path) === dir) return;
+  const ext = path.endsWith(GRAPH_EXT) ? GRAPH_EXT : RUNNER_EXT;
+  const to = uniquePath(app.files, dir, basename(path).slice(0, -ext.length), ext);
+  await renameFile(path, to);
+  rewriteRefs(new Map([[path, to]]));
+});
+
 /** Moves a folder into another folder; not into itself or its own subfolders. */
 export const moveFolderInto = guard(async (dir, parent) => {
   if (dirname(dir) === parent || parent === dir || parent.startsWith(dir + '/')) return;
@@ -207,10 +241,10 @@ export const deleteFile = guard(async (path, label, mode) => {
   if (app.selected?.path === path) select(null);
 });
 
-export const newGraph = guard(async () => {
+export const newGraph = guard(async (dir = 'workflows') => {
   const name = await ask('New workflow', '', { placeholder: 'e.g. Sync orders' });
   if (!name) return;
-  const path = uniquePath(app.files, 'workflows', slug(name), GRAPH_EXT);
+  const path = uniquePath(app.files, dir, slug(name), GRAPH_EXT);
   write(path, serializeGraph(newGraphDoc(name)));
   select({ kind: 'graph', path });
 });
@@ -226,10 +260,10 @@ export const renameGraph = guard(async (path) => {
   if (to !== path) await renameFile(path, to);
 });
 
-export const newWorkflow = guard(async () => {
+export const newWorkflow = guard(async (dir = 'runners') => {
   const name = await ask('New runner', '', { placeholder: 'e.g. Onboard users' });
   if (!name) return;
-  const path = uniquePath(app.files, 'runners', slug(name), RUNNER_EXT);
+  const path = uniquePath(app.files, dir, slug(name), RUNNER_EXT);
   write(path, serializeWorkflow({ name, data: '', steps: [], scripts: { pre: '', post: '' }, settings: { stopOnFailure: false, delayMs: '', maxIterations: '' } }));
   select({ kind: 'workflow', path });
 });

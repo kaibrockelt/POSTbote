@@ -1,7 +1,7 @@
 # Workflows (node-based)
 
 A workflow is a graph of nodes in `workflows/**/<name>.workflow.yaml`, edited on a canvas in the app
-(sidebar → Workflows). Values flow from a starter node along the edges: every node gets one input and
+(sidebar → Workflows; folders like for requests, moved by drag & drop or "Move to"). Values flow from a starter node along the edges: every node gets one input and
 emits on an output port; all edges leaving that port are followed in order. Request chains over data
 rows are a different feature, the [runner](collection-format.md) (`runners/`).
 

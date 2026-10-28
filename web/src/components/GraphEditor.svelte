@@ -2,6 +2,7 @@
   // Node workflow editor: drag nodes, connect an output port to another node,
   // configure the selected node on the right, run and inspect every step.
   import CodeArea from './CodeArea.svelte';
+  import PathField from './PathField.svelte';
   import FileEditor from './FileEditor.svelte';
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseGraph, serializeGraph, GRAPH_EXT } from '../lib/format.js';
@@ -235,6 +236,7 @@
               <span>Request</span>
               <select bind:value={node.request}>
                 <option value="">— choose —</option>
+                {#if node.request && !requests.some((r) => r.path === node.request)}<option value={node.request}>⚠ {node.request} (missing)</option>{/if}
                 {#each requests as r (r.path)}<option value={r.path}>{r.method} · {r.name} — {r.path.slice(9)}</option>{/each}
               </select>
             </label>
@@ -259,6 +261,7 @@
               <span>Run for every item</span>
               <select bind:value={node.child}>
                 <option value="">— choose a node —</option>
+                {#if node.child && !d.doc.nodes.some((n) => n.id === node.child)}<option value={node.child}>⚠ {node.child} (missing)</option>{/if}
                 {#each d.doc.nodes.filter((n) => n.id !== node.id && !NODE_TYPES[n.type]?.starter) as n (n.id)}<option value={n.id}>{n.name || n.id}</option>{/each}
               </select>
             </label>
@@ -294,16 +297,17 @@
             <CodeArea bind:value={node.template} rows={10} />
             <p class="hint">Quote strings yourself: <code>{'"name": "{{input.name}}"'}</code>, numbers without quotes.</p>
           {:else if node.type === 'loadFile'}
-            <label><span>Path</span><input class="mono" bind:value={node.path} placeholder={'data/{{input.name}}.json'} /></label>
+            <label><span>Path</span><PathField bind:value={node.path} placeholder={'data/{{input.name}}.json'} /></label>
             <label><span>Parse as</span><select bind:value={node.parse}><option value="json">JSON</option><option value="csv">CSV</option><option value="text">text</option><option value="file">file</option></select></label>
           {:else if node.type === 'writeFile'}
-            <label><span>Path</span><input class="mono" bind:value={node.path} placeholder="out/result.json" /></label>
+            <label><span>Path</span><PathField bind:value={node.path} placeholder="out/result.json" /></label>
             <label><span>Format</span><select bind:value={node.format}><option value="json">JSON</option><option value="csv">CSV</option></select></label>
           {:else if node.type === 'workflow'}
             <label>
               <span>Workflow</span>
               <select bind:value={node.workflow}>
                 <option value="">— choose —</option>
+                {#if node.workflow && !callable.includes(node.workflow)}<option value={node.workflow}>⚠ {node.workflow} (missing or not callable)</option>{/if}
                 {#each callable as p (p)}<option value={p}>{p.slice(10)}</option>{/each}
               </select>
             </label>

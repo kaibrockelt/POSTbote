@@ -75,7 +75,41 @@ export function buildTree(files) {
   graphs.sort(byOrder);
   envs.push(...listEnvs(files));
   other.sort();
-  return { root, workflows, graphs, envs, other };
+  return { root, workflows, graphs, envs, other, runnerTree: buildSection(files, 'runners', RUNNER_EXT), graphTree: buildSection(files, 'workflows', GRAPH_EXT) };
+}
+
+/**
+ * Folder tree of a sidebar section (runners/, workflows/): items are files with
+ * `ext`; a `_folder.yaml` keeps an empty folder and may carry its name and seq.
+ */
+export function buildSection(files, rootDir, ext) {
+  const root = { name: rootDir, path: rootDir, folders: [], items: [] };
+  const index = new Map([[rootDir, root]]);
+  const folder = (path) => {
+    if (index.has(path)) return index.get(path);
+    const parent = folder(path.slice(0, path.lastIndexOf('/')));
+    const f = { name: basename(path), path, folders: [], items: [] };
+    parent.folders.push(f);
+    index.set(path, f);
+    return f;
+  };
+  for (const [path, text] of Object.entries(files)) {
+    if (!path.startsWith(rootDir + '/')) continue;
+    const dir = path.slice(0, path.lastIndexOf('/'));
+    if (path.endsWith('/' + FOLDER_FILE)) {
+      const f = folder(dir);
+      const m = meta(text, '');
+      f.label = m.name;
+      f.seq = m.seq;
+    } else if (path.endsWith(ext)) folder(dir).items.push({ path, ...meta(text, basename(path).slice(0, -ext.length)) });
+  }
+  const sort = (f) => {
+    f.folders.sort((a, b) => (a.seq || 0) - (b.seq || 0) || (a.label || a.name).localeCompare(b.label || b.name, undefined, { numeric: true }));
+    f.items.sort(byOrder);
+    f.folders.forEach(sort);
+  };
+  sort(root);
+  return root;
 }
 
 export function allRequests(files) {

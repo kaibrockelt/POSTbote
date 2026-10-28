@@ -2,6 +2,7 @@
   import FolderPlusIcon from './FolderPlusIcon.svelte';
   import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
+  import SectionTree from './SectionTree.svelte';
   import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, askRemove, toggleCollapsed, contentOf, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
   import { dnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
@@ -105,27 +106,18 @@
           <span class="caret">{open('runners') ? '▾' : '▸'}</span>Runners
           {#if !open('runners')}<span class="count">{tree.workflows.length}</span>{/if}
         </button>
-        <span class="actions"><button class="icon" title="New runner" onclick={act.newWorkflow}>＋</button></span>
+        <span class="actions">
+          <button class="icon" title="New runner" onclick={() => act.newWorkflow()}>＋</button>
+          <button class="icon" title="New folder" onclick={() => act.newFolder('runners')}><FolderPlusIcon /></button>
+        </span>
       </div>
-      {#each open('runners') ? tree.workflows : [] as w (w.path)}
-        <div class="item" class:selected={sel('workflow', w.path)} role="treeitem" aria-selected={sel('workflow', w.path)} tabindex="-1"
-          oncontextmenu={(ev) => openMenu(ev, [
-            { label: 'Open', action: () => select({ kind: 'workflow', path: w.path }) },
-            { label: 'Rename…', action: () => act.renameWorkflow(w.path) },
-            { separator: true },
-            ...act.removeItems((mode) => act.deleteFile(w.path, w.name, mode)),
-          ])}>
-          <button class="label" onclick={() => select({ kind: 'workflow', path: w.path })}>
-            ⇶ {w.name}
-            {#if isDirty(w.path)}<span class="unsaved" title="unsaved changes">●</span>{/if}
-            {#if app.running[w.path]}<span class="spinner"></span>{/if}
-          </button>
-          <span class="actions">
-            <button class="icon" title="Rename" onclick={() => act.renameWorkflow(w.path)}>✎</button>
-            <button class="icon" title="Delete or move to trash" onclick={() => act.deleteFile(w.path, w.name)}><Icon name="trash" size={13} /></button>
-          </span>
+      {#if open('runners')}
+        <div class="section-drop" role="tree" tabindex="-1" class:drop-target={dnd.target === 'runners'}
+          ondragover={(e) => dragOver(e, 'runners')} ondragleave={(e) => dragLeave(e, 'runners')} ondrop={(e) => drop(e, 'runners')}>
+          <SectionTree folder={tree.runnerTree} kind="workflow" icon="⇶" onNew={(dir) => act.newWorkflow(dir)} onRename={act.renameWorkflow} folders={folderList(tree.runnerTree)} />
+          {#if !tree.workflows.length}<p class="hint pad">No runners yet.</p>{/if}
         </div>
-      {/each}
+      {/if}
     </div>
 
     <div class="section">
@@ -134,27 +126,18 @@
           <span class="caret">{open('graphs') ? '▾' : '▸'}</span>Workflows
           {#if !open('graphs')}<span class="count">{tree.graphs.length}</span>{/if}
         </button>
-        <span class="actions"><button class="icon" title="New workflow" onclick={act.newGraph}>＋</button></span>
+        <span class="actions">
+          <button class="icon" title="New workflow" onclick={() => act.newGraph()}>＋</button>
+          <button class="icon" title="New folder" onclick={() => act.newFolder('workflows')}><FolderPlusIcon /></button>
+        </span>
       </div>
-      {#each open('graphs') ? tree.graphs : [] as g (g.path)}
-        <div class="item" class:selected={sel('graph', g.path)} role="treeitem" aria-selected={sel('graph', g.path)} tabindex="-1"
-          oncontextmenu={(ev) => openMenu(ev, [
-            { label: 'Open', action: () => select({ kind: 'graph', path: g.path }) },
-            { label: 'Rename…', action: () => act.renameGraph(g.path) },
-            { separator: true },
-            ...act.removeItems((mode) => act.deleteFile(g.path, g.name, mode)),
-          ])}>
-          <button class="label" onclick={() => select({ kind: 'graph', path: g.path })}>
-            ◇ {g.name}
-            {#if isDirty(g.path)}<span class="unsaved" title="unsaved changes">●</span>{/if}
-            {#if app.running[g.path]}<span class="spinner"></span>{/if}
-          </button>
-          <span class="actions">
-            <button class="icon" title="Rename" onclick={() => act.renameGraph(g.path)}>✎</button>
-            <button class="icon" title="Delete or move to trash" onclick={() => act.deleteFile(g.path, g.name)}><Icon name="trash" size={13} /></button>
-          </span>
+      {#if open('graphs')}
+        <div class="section-drop" role="tree" tabindex="-1" class:drop-target={dnd.target === 'workflows'}
+          ondragover={(e) => dragOver(e, 'workflows')} ondragleave={(e) => dragLeave(e, 'workflows')} ondrop={(e) => drop(e, 'workflows')}>
+          <SectionTree folder={tree.graphTree} kind="graph" icon="◇" onNew={(dir) => act.newGraph(dir)} onRename={act.renameGraph} folders={folderList(tree.graphTree)} />
+          {#if !tree.graphs.length}<p class="hint pad">No workflows yet.</p>{/if}
         </div>
-      {/each}
+      {/if}
     </div>
 
     <div class="section">

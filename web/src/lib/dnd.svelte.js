@@ -1,7 +1,7 @@
-// Drag & drop of requests and folders in the sidebar.
-import { moveRequest, moveFolderInto } from './actions.js';
+// Drag & drop of requests, runners, workflows and folders in the sidebar.
+import { moveRequest, moveFolderInto, moveFile } from './actions.js';
 
-export const dnd = $state({ item: null, target: null }); // item: { kind: 'request' | 'folder', path }
+export const dnd = $state({ item: null, target: null }); // item: { kind: 'request' | 'file' | 'folder', path }
 
 export function dragStart(e, item) {
   dnd.item = item;
@@ -19,7 +19,9 @@ export function dragEnd() {
 function allowed(dir) {
   const it = dnd.item;
   if (!it) return false;
-  if (it.kind === 'request') return it.path.slice(0, it.path.lastIndexOf('/')) !== dir;
+  // only within the same section (requests/, runners/, workflows/)
+  if (it.path.split('/')[0] !== dir.split('/')[0]) return false;
+  if (it.kind === 'request' || it.kind === 'file') return it.path.slice(0, it.path.lastIndexOf('/')) !== dir;
   return dir !== it.path && !dir.startsWith(it.path + '/') && it.path.slice(0, it.path.lastIndexOf('/')) !== dir;
 }
 
@@ -42,5 +44,6 @@ export async function drop(e, dir) {
   const it = dnd.item;
   dragEnd();
   if (it.kind === 'request') await moveRequest(it.path, dir);
+  else if (it.kind === 'file') await moveFile(it.path, dir);
   else await moveFolderInto(it.path, dir);
 }
