@@ -65,7 +65,7 @@ export const newRequest = guard(async (dir = 'requests') => {
     const imported = importRequestInto(text, dir, name);
     doc = imported.doc;
     toast(imported.notes.join(' · '));
-    for (const w of imported.warnings) toast(w, 'error');
+    for (const w of imported.warnings) toast(w);
   }
   const path = uniquePath(app.files, dir, slug(doc.name), REQ_EXT);
   write(path, serializeRequest(doc));

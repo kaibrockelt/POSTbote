@@ -36,10 +36,18 @@ test('secrets become variables', () => {
   );
 });
 
-test('existing variable names are reused or avoided', () => {
+test('existing variable names are reused, filled or avoided', () => {
   const doc = { auth: { type: 'bearer', token: 'new' }, headers: [], params: [] };
   extractSecrets(doc, new Map([['token', 'old']]));
   assert.equal(doc.auth.token, '{{token2}}');
+
+  const declared = { auth: { type: 'bearer', token: 'tok' }, headers: [], params: [] };
+  assert.deepEqual(extractSecrets(declared, new Map([['token', '']])).map((f) => f.key), ['token']);
+  assert.equal(declared.auth.token, '{{token}}');
+
+  const same = { auth: { type: 'bearer', token: 'tok' }, headers: [], params: [] };
+  assert.deepEqual(extractSecrets(same, new Map([['token', 'tok']])), []); // already stored
+  assert.equal(same.auth.token, '{{token}}');
 });
 
 test('known base URL is replaced by its variable', () => {

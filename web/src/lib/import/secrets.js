@@ -16,14 +16,16 @@ const camel = (s) =>
 /**
  * Moves secret values out of the doc (mutates it) and returns
  * [{ key, value, where }]. `taken` holds variable names already in use with
- * their values, so equal values share a name and different ones get a suffix.
+ * their values: equal values share a name, a declared but empty variable
+ * (`token=`) gets filled, different values get a suffix.
  */
 export function extractSecrets(doc, taken = new Map()) {
   const found = [];
   const use = (base, value, where) => {
     let name = base;
-    for (let i = 2; taken.has(name) && taken.get(name) !== value; i++) name = `${base}${i}`;
-    if (!taken.has(name)) {
+    const free = (n) => !taken.has(n) || taken.get(n) === value || taken.get(n) === '';
+    for (let i = 2; !free(name); i++) name = `${base}${i}`;
+    if (taken.get(name) !== value) {
       taken.set(name, value);
       found.push({ key: name, value, where });
     }

@@ -36,10 +36,20 @@ export function importRequestInto(text, dir, name = '') {
 function storeSecrets(env, secrets) {
   const add = (path, rows) => {
     const text = contentOf(path);
-    const have = new Set(parseEnv(text).map((r) => r.key));
-    const missing = rows.filter((r) => !have.has(r.key));
-    if (!missing.length) return;
-    const next = updateEnv(text, [...parseEnv(text), ...missing]);
+    const current = parseEnv(text);
+    const have = new Map(current.map((r) => [r.key, r]));
+    let changed = false;
+    for (const r of rows) {
+      if (!have.has(r.key)) {
+        current.push(r);
+        changed = true;
+      } else if (have.get(r.key).value === '' && r.value !== '') {
+        have.get(r.key).value = r.value; // declared but not set yet
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    const next = updateEnv(text, current);
     if (path in app.drafts) app.drafts[path] = next;
     else write(path, next);
   };
