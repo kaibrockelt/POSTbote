@@ -98,6 +98,13 @@
     unset: function (k) { call('env.unset', String(k)); },
     all: function () { return call('env.all'); }
   };
+  // cookie jar of the active environment (kept across runs)
+  g.cookies = {
+    get: function (name, url) { return call('cookies.get', String(name), url ? String(url) : ''); },
+    all: function () { return call('cookies.all'); },
+    set: function (name, value, url) { call('cookies.set', String(name), str(value), String(url || '')); },
+    clear: function () { call('cookies.clear'); }
+  };
   g.vars = {
     get: function (k) { return call('vars.get', String(k)); },
     set: function (k, v) { call('vars.set', String(k), v === undefined ? null : v); },

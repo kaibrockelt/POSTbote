@@ -65,6 +65,20 @@ gitignored) when the run ends; `env.get` sees shared and private values merged. 
 live for one run (a request run, or a whole runner) — the right place for tokens you do not want
 on disk.
 
+## Cookies
+
+Cookies set by responses are kept per environment in `.cookies/<env>.json` (`_none` without an
+environment; gitignored, never exported) and sent again by later requests, also across runs and app
+restarts. View and clear them in the environment editor or under collection settings → Cookies.
+
+```js
+cookies.get('session');                         // value of the first matching cookie
+cookies.get('session', 'https://api.example.com/');
+cookies.all();                                  // [{ name, value, domain, path }]
+cookies.set('debug', '1', 'https://api.example.com/');
+cookies.clear();                                // empty the jar of the active environment
+```
+
 ## Files, CSV, utilities
 
 ```js

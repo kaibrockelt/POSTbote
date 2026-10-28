@@ -39,6 +39,7 @@ fn echo_server() -> String {
                 let mut body = vec![0; len];
                 rd.read_exact(&mut body).unwrap();
                 let status = if path.starts_with("/status/404") { "404 Not Found" } else { "200 OK" };
+                let set_cookie = if path.starts_with("/login") { "Set-Cookie: session=abc; Path=/; HttpOnly\r\n" } else { "" };
                 let out = serde_json::json!({
                     "method": method, "path": path, "headers": headers,
                     "body": String::from_utf8_lossy(&body),
@@ -47,7 +48,7 @@ fn echo_server() -> String {
                 let mut s = stream;
                 let _ = write!(
                     s,
-                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                    "HTTP/1.1 {status}\r\n{set_cookie}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{out}",
                     out.len()
                 );
             });
@@ -224,4 +225,41 @@ fn script_limits() {
 
     let r = run(mk(), Target::Request("requests/syntax.req.yaml".into()), opts()).request.unwrap();
     assert!(r.script_errors[0].contains("SyntaxError"), "{:?}", r.script_errors);
+}
+
+#[test]
+fn cookies_persist_per_environment() {
+    let base = echo_server();
+    let files = |extra: &[(&str, &str)]| -> BTreeMap<String, String> {
+        let mut m = BTreeMap::new();
+        m.insert("postbote.yaml".into(), format!("version: 1\nname: T\nvariables:\n  baseUrl: {base}\n"));
+        m.insert(".gitignore".into(), "# >>> POSTBote (managed block, edit via collection settings) >>>\n*.env\n# <<< POSTBote <<<\n".into());
+        m.insert("environments/dev.env.pub".into(), "a=1\n".into());
+        m.insert("requests/login.req.yaml".into(), "name: Login\nurl: \"{{baseUrl}}/login\"\n".into());
+        m.insert(
+            "requests/me.req.yaml".into(),
+            "name: Me\nurl: \"{{baseUrl}}/me\"\nscripts:\n  post: |\n    vars.set('sent', res.json().headers.cookie || '');\n    vars.set('jar', cookies.get('session') || '');\n    test('cookie', () => expect(res.json().headers.cookie).toBe('session=abc'));\n".into(),
+        );
+        for (k, v) in extra {
+            m.insert(k.to_string(), v.to_string());
+        }
+        m
+    };
+    // first run: the server sets a session cookie
+    let out = run(Box::new(MemFs::new(files(&[])).unwrap()), Target::Request("requests/login.req.yaml".into()), opts());
+    assert!(out.request.unwrap().error.is_none());
+    let jar = out.changed_files.get(".cookies/dev.json").cloned().flatten().expect("jar written");
+    assert!(jar.contains("session=abc"), "{jar}");
+    let ignore = out.changed_files.get(".gitignore").cloned().flatten().expect(".gitignore updated");
+    assert!(ignore.contains(".cookies/\n# <<< POSTBote <<<"), "{ignore}");
+
+    // second run with the stored jar: the cookie is sent again
+    let fs = MemFs::new(files(&[(".cookies/dev.json", &jar)])).unwrap();
+    let r = run(Box::new(fs), Target::Request("requests/me.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?} {:?}", r.tests, r.script_errors);
+
+    // other environments (here: none) have their own jar
+    let fs = MemFs::new(files(&[(".cookies/dev.json", &jar)])).unwrap();
+    let r = run(Box::new(fs), Target::Request("requests/me.req.yaml".into()), RunOptions::default()).request.unwrap();
+    assert!(r.tests.iter().any(|t| !t.passed));
 }

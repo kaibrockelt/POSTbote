@@ -382,8 +382,8 @@ const GIT_END = '# <<< POSTBote <<<';
 
 export function gitignoreBlock(commitEnvironments) {
   return commitEnvironments
-    ? [GIT_BEGIN, '# all environments are committed (settings.commitEnvironments: true)', GIT_END]
-    : [GIT_BEGIN, '# private environments stay local, public ones (*.env.pub) are committed', '*.env', GIT_END];
+    ? [GIT_BEGIN, '# all environments are committed (settings.commitEnvironments: true)', '.cookies/', GIT_END]
+    : [GIT_BEGIN, '# private environments stay local, public ones (*.env.pub) are committed', '*.env', '.cookies/', GIT_END];
 }
 
 export function updateGitignore(text, commitEnvironments) {

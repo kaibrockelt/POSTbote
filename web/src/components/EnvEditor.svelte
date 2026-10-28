@@ -2,6 +2,7 @@
   // An environment = shared values (<name>.env.pub, committed) overlaid by
   // private values (<name>.env, gitignored). Both are edited here as drafts.
   import KvTable from './KvTable.svelte';
+  import CookieJar from './CookieJar.svelte';
   import { app, contentOf, setDraft, setEnv } from '../lib/state.svelte.js';
   import { parseEnv, updateEnv, envPublicPath, envPrivatePath, getEnvTint, setEnvTint, isTint } from '../lib/format.js';
 
@@ -158,6 +159,8 @@
       <p class="muted">No variables yet.</p>
     {/if}
   </section>
+
+  <CookieJar env={name} />
 </div>
 
 <style>
