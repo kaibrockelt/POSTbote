@@ -20,13 +20,6 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .on_menu_event(|app, event| {
-            if event.id() == menu::CLOSE_WINDOW {
-                if let Some(w) = tauri::Manager::get_webview_window(app, "main") {
-                    let _ = w.close();
-                }
-            }
-        })
         .run(tauri::generate_context!())
         .expect("error while running POSTBote");
 }
@@ -36,11 +29,18 @@ fn main() {
 #[cfg(target_os = "macos")]
 mod menu {
     use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-    use tauri::{AppHandle, Runtime};
+    use tauri::{AppHandle, Manager, Runtime};
 
-    pub const CLOSE_WINDOW: &str = "close-window";
+    const CLOSE_WINDOW: &str = "close-window";
 
     pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+        app.on_menu_event(|app, event| {
+            if event.id() == CLOSE_WINDOW {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.close();
+                }
+            }
+        });
         let info = app.package_info();
         let about = AboutMetadata {
             name: Some("POSTBote".into()),
