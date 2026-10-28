@@ -40,6 +40,7 @@ export const api = {
   workspaces: () => call('GET', '/api/workspaces'),
   createWorkspace: (body) => call('POST', '/api/workspaces', body),
   deleteWorkspace: (id) => call('DELETE', `/api/workspaces/${id}`),
+  trashWorkspace: (id) => call('POST', `/api/workspaces/${id}/trash`),
   files: (id) => call('GET', `/api/workspaces/${id}/files`),
   putFile: (id, path, text) => call('PUT', `/api/workspaces/${id}/files/${enc(path)}`, text),
   deleteFile: (id, path) => call('DELETE', `/api/workspaces/${id}/files/${enc(path)}`),

@@ -35,6 +35,15 @@
     await removeWorkspace(ws).catch(fail);
   }
 
+  async function trashWs() {
+    const ws = app.ws;
+    const msg = `The folder ${ws.path} goes to the system trash, including environments and data files. You can restore it from there.`;
+    if (!(await confirmAction(`Move “${ws.name}” to the trash?`, msg, 'Move to trash'))) return;
+    await removeWorkspace(ws, { trash: true })
+      .then(() => toast(`Moved “${ws.name}” to the trash`))
+      .catch(fail);
+  }
+
   const storageLabel = { disk: 'external folder', browser: 'browser', server: 'server' };
 </script>
 
@@ -50,7 +59,8 @@
       <button class="icon" title="Reload from disk, e.g. after git pull (⌘/Ctrl+R)" aria-label="Reload" onclick={() => reload().then(() => toast('Reloaded')).catch(fail)}><Icon name="reload" /></button>
     {/if}
     <button class="icon" title="Export as zip" aria-label="Export" onclick={() => (app.exporting = true)}><Icon name="export" /></button>
-    {#if !app.ws.managed}<button class="icon danger" title="Remove from list" aria-label="Remove" onclick={removeWs}><Icon name="remove" /></button>{/if}
+    {#if !app.ws.managed}<button class="icon danger" title="Remove from list (the folder stays)" aria-label="Remove" onclick={removeWs}><Icon name="remove" /></button>{/if}
+    {#if app.ws.storage === 'disk'}<button class="icon danger" title="Move collection to the trash" aria-label="Move to trash" onclick={trashWs}><Icon name="trash" /></button>{/if}
     <button class="icon" title="New / open / import collection" aria-label="New collection" onclick={onNewWorkspace}>＋</button>
   </div>
 

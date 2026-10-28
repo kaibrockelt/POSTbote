@@ -547,9 +547,13 @@ export async function createWorkspace({ name, storage, path, files }) {
   await openWorkspace(app.workspaces.find((w) => w.id === ws.id) || ws);
 }
 
-export async function removeWorkspace(ws) {
+export async function removeWorkspace(ws, { trash = false } = {}) {
   if (ws.storage === 'browser') await browserDb.remove(ws.id);
-  else await api.deleteWorkspace(ws.id);
+  else if (trash) {
+    // pending writes would recreate the folder after it was moved
+    if (app.ws?.id === ws.id) await flush();
+    await api.trashWorkspace(ws.id);
+  } else await api.deleteWorkspace(ws.id);
   if (app.ws?.id === ws.id) {
     app.ws = null;
     app.files = {};

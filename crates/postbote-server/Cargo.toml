@@ -32,3 +32,4 @@ dirs = "6"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 rpassword = "7"
 open = "5"
+trash = "5"

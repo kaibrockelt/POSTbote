@@ -308,6 +308,25 @@ pub fn create(state: &AppState, user: &str, name: Option<&str>, path: Option<&st
     }
 }
 
+/// Local mode: moves the collection folder to the system trash (recoverable)
+/// and forgets it. Only folders that contain a postbote.yaml are moved.
+pub fn trash(state: &AppState, user: &str, id: &str) -> Result<()> {
+    if !matches!(state.cfg.mode, Mode::Local { .. }) {
+        bail!("only available in the local app");
+    }
+    let dir = resolve(state, user, id)?;
+    if !dir.join(model::MANIFEST).is_file() {
+        bail!("{} is not a collection folder (no postbote.yaml)", dir.display());
+    }
+    trash::delete(&dir).with_context(|| format!("moving {} to the trash", dir.display()))?;
+    let mut cfg = load_config()?;
+    if cfg.external.iter().any(|e| e.id == id) {
+        cfg.external.retain(|e| e.id != id);
+        save_config(&cfg)?;
+    }
+    Ok(())
+}
+
 pub fn remove(state: &AppState, user: &str, id: &str) -> Result<()> {
     match &state.cfg.mode {
         Mode::Local { .. } => {
