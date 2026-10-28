@@ -1,5 +1,6 @@
 <script>
   import FolderPlusIcon from './FolderPlusIcon.svelte';
+  import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
   import { app, select, isDirty, openMenu } from '../lib/state.svelte.js';
   import {
@@ -12,6 +13,7 @@
     deleteFile,
     moveRequest,
     moveFolderInto,
+    removeItems,
   } from '../lib/actions.js';
   import { dnd, dragStart, dragEnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
 
@@ -32,7 +34,7 @@
         items: folders.map((f) => ({ label: f.label, disabled: f.path === parentOf(r.path), hint: 'current', action: () => moveRequest(r.path, f.path) })),
       },
       { separator: true },
-      { label: 'Delete', danger: true, action: () => deleteFile(r.path, r.name) },
+      ...removeItems((mode) => deleteFile(r.path, r.name, mode)),
     ]);
   }
 
@@ -52,7 +54,7 @@
         })),
       },
       { separator: true },
-      { label: 'Delete folder', danger: true, action: () => deleteFolder(f.path) },
+      ...removeItems((mode) => deleteFolder(f.path, mode)),
     ]);
   }
 </script>
@@ -82,7 +84,7 @@
       <button class="icon" title="New request" onclick={() => newRequest(folder.path)}>＋</button>
       <button class="icon" title="New subfolder" onclick={() => newFolder(folder.path)}><FolderPlusIcon /></button>
       <button class="icon" title="Rename" onclick={() => moveFolder(folder.path)}>✎</button>
-      <button class="icon" title="Delete" onclick={() => deleteFolder(folder.path)}>🗑</button>
+      <button class="icon" title="Delete or move to trash" onclick={() => deleteFolder(folder.path)}><Icon name="trash" size={13} /></button>
     </span>
   </div>
 {/if}
@@ -115,7 +117,7 @@
       <span class="actions">
         <button class="icon" title="Rename" onclick={() => renameRequest(r.path)}>✎</button>
         <button class="icon" title="Duplicate" onclick={() => duplicateRequest(r.path)}>⧉</button>
-        <button class="icon" title="Delete" onclick={() => deleteFile(r.path, r.name)}>🗑</button>
+        <button class="icon" title="Delete or move to trash" onclick={() => deleteFile(r.path, r.name)}><Icon name="trash" size={13} /></button>
       </span>
     </div>
   {/each}

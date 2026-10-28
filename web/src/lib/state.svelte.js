@@ -84,6 +84,10 @@ export function dialog(opts) {
 }
 export const ask = (title, value = '', opts = {}) => dialog({ type: 'prompt', title, value, ...opts });
 export const confirmAction = (title, message = '', okLabel = 'Delete') => dialog({ type: 'confirm', title, message, okLabel });
+/** The local app can move files of disk collections to the system trash. */
+export const canTrash = () => app.info?.mode === 'local' && app.ws?.storage === 'disk';
+/** Asks "Delete" or "Move to trash" (when available); resolves 'delete' | 'trash' | null. */
+export const askRemove = (title, message = '', items = []) => dialog({ type: 'remove', title, message, items, canTrash: canTrash() });
 
 export function openMenu(e, items) {
   e.preventDefault();
@@ -160,6 +164,25 @@ export function write(path, text) {
       track(api.putFile(ws.id, path, app.files[path] ?? text));
     }, 300),
   );
+}
+
+/** Moves files or whole folders (collection-relative) to the system trash. */
+export async function trashPaths(paths) {
+  await flush();
+  await api.trashPaths(app.ws.id, paths);
+  for (const p of Object.keys(app.files)) {
+    if (paths.some((t) => p === t || p.startsWith(t + '/'))) forget(p);
+  }
+  persistUi();
+}
+
+function forget(path) {
+  delete app.files[path];
+  delete app.results[path];
+  delete app.drafts[path];
+  for (const t of app.tabs.filter((t) => tabFiles(t).includes(path))) {
+    if (!tabFiles(t).some((f) => f in app.files || f in app.drafts)) dropTab(t);
+  }
 }
 
 export async function removeFile(path) {
@@ -547,13 +570,14 @@ export async function createWorkspace({ name, storage, path, files }) {
   await openWorkspace(app.workspaces.find((w) => w.id === ws.id) || ws);
 }
 
-export async function removeWorkspace(ws, { trash = false } = {}) {
+/** mode: 'unlist' (external folder stays), 'delete' (for good) or 'trash' (local folder to the system trash). */
+export async function removeWorkspace(ws, mode = 'unlist') {
+  // pending writes would recreate the folder
+  if (app.ws?.id === ws.id && mode !== 'unlist') await flush();
   if (ws.storage === 'browser') await browserDb.remove(ws.id);
-  else if (trash) {
-    // pending writes would recreate the folder after it was moved
-    if (app.ws?.id === ws.id) await flush();
-    await api.trashWorkspace(ws.id);
-  } else await api.deleteWorkspace(ws.id);
+  else if (mode === 'trash') await api.trashWorkspace(ws.id);
+  else if (mode === 'delete') await api.purgeWorkspace(ws.id);
+  else await api.deleteWorkspace(ws.id);
   if (app.ws?.id === ws.id) {
     app.ws = null;
     app.files = {};

@@ -151,6 +151,25 @@ impl DiskFs {
         }
     }
 
+    /// Absolute path of an existing file or folder inside the collection
+    /// (e.g. to hand it to the system trash); never the root itself.
+    pub fn existing(&self, p: &str) -> Result<PathBuf> {
+        let c = clean(p)?;
+        let full = self.resolve(&c)?;
+        let canon = full.canonicalize().with_context(|| format!("{c}: not found"))?;
+        if !canon.starts_with(&self.root) || canon == self.root {
+            bail!("{c}: path escapes the collection");
+        }
+        Ok(full)
+    }
+
+    /// Removes empty folders above a removed path.
+    pub fn prune_parents(&self, p: &str) {
+        if let Ok(c) = clean(p) {
+            self.prune(parent(&c).to_string());
+        }
+    }
+
     fn prune(&self, mut dir: String) {
         while !dir.is_empty() {
             if std::fs::remove_dir(self.root.join(&dir)).is_err() {
@@ -410,5 +429,21 @@ mod tests {
         let mut fs = DiskFs::open(dir.path()).unwrap();
         assert!(fs.write("link/evil.txt", "x").is_err());
         assert!(fs.read("link/evil.txt").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_paths_stay_inside() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("link")).unwrap();
+        let mut fs = DiskFs::open(dir.path()).unwrap();
+        fs.write("requests/a.req.yaml", "x").unwrap();
+        assert!(fs.existing("requests/a.req.yaml").is_ok());
+        assert!(fs.existing("requests").is_ok());
+        assert!(fs.existing("missing.txt").is_err());
+        assert!(fs.existing("../x").is_err());
+        assert!(fs.existing(".").is_err());
+        assert!(fs.existing("link").is_err());
     }
 }

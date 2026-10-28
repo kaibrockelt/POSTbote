@@ -55,6 +55,8 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/api/workspaces", get(list_workspaces).post(create_workspace))
         .route("/api/workspaces/{id}", axum::routing::delete(delete_workspace))
         .route("/api/workspaces/{id}/trash", post(trash_workspace))
+        .route("/api/workspaces/{id}/purge", post(purge_workspace))
+        .route("/api/workspaces/{id}/trash-paths", post(trash_paths))
         .route("/api/workspaces/{id}/files", get(get_files))
         .route("/api/workspaces/{id}/files/{*path}", put(put_file).delete(delete_file))
         .route("/api/workspaces/{id}/rename", post(rename_file))
@@ -244,6 +246,23 @@ async fn trash_workspace(State(s): State<Arc<AppState>>, User(u): User, Path(id)
     let _lock = s.registry_lock.lock().await;
     let st = s.clone();
     blocking(move || workspaces::trash(&st, &u, &id)).await?;
+    Ok(Json(json!({})))
+}
+
+async fn purge_workspace(State(s): State<Arc<AppState>>, User(u): User, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    let _lock = s.registry_lock.lock().await;
+    let st = s.clone();
+    blocking(move || workspaces::purge(&st, &u, &id)).await?;
+    Ok(Json(json!({})))
+}
+
+#[derive(Deserialize)]
+struct TrashPaths {
+    paths: Vec<String>,
+}
+
+async fn trash_paths(State(s): State<Arc<AppState>>, User(u): User, Path(id): Path<String>, Json(b): Json<TrashPaths>) -> ApiResult<Json<Value>> {
+    blocking(move || workspaces::trash_paths(&s, &u, &id, &b.paths)).await?;
     Ok(Json(json!({})))
 }
 

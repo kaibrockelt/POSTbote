@@ -29,6 +29,7 @@
     e.preventDefault();
     const t = app.dialog.type;
     if (t === 'prompt' && app.dialog.paste) return close({ value: value.trim(), paste: paste.trim(), target });
+    if (t === 'remove') return close(app.dialog.canTrash ? 'trash' : 'delete');
     close(t === 'confirm' ? true : t === 'unsaved' ? 'save' : t === 'info' ? true : value.trim());
   }
   function pasteKeydown(e) {
@@ -72,6 +73,14 @@
           <button type="button" class="danger-outline" onclick={() => close('discard')}>Discard</button>
           {#if app.dialog.canSaveAs}<button type="button" onclick={() => close('saveas')}>Save as…</button>{/if}
           <button type="submit" class="primary" bind:this={primary} title="Enter">Save</button>
+        {:else if app.dialog.type === 'remove'}
+          <button type="button" onclick={() => close(null)} title="Esc">Cancel</button>
+          {#if app.dialog.canTrash}
+            <button type="button" class="danger-outline" onclick={() => close('delete')} title="Cannot be undone">Delete</button>
+            <button type="submit" class="primary" bind:this={primary} title="Enter – can be restored from the system trash">Move to trash</button>
+          {:else}
+            <button type="submit" class="danger-btn" bind:this={primary}>Delete</button>
+          {/if}
         {:else if app.dialog.type === 'info'}
           <button type="submit" class="primary" bind:this={primary}>OK</button>
         {:else}

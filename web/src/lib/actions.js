@@ -19,7 +19,7 @@ import {
   listEnvs,
   emptyRequest,
 } from './format.js';
-import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, toast, contentOf, setDraft } from './state.svelte.js';
+import { app, ask, confirmAction, askRemove, canTrash, trashPaths, write, removeFile, renameFile, select, setEnv, fail, toast, contentOf, setDraft } from './state.svelte.js';
 import { requestImporters } from './import/index.js';
 import { importRequestInto, hasSecrets } from './import/apply.js';
 
@@ -165,16 +165,40 @@ export const moveFolderInto = guard(async (dir, parent) => {
   await relocateFolder(dir, target);
 });
 
-export const deleteFolder = guard(async (dir) => {
-  const paths = Object.keys(app.files).filter((p) => p.startsWith(dir + '/'));
-  if (!(await confirmAction(`Delete folder “${basename(dir)}”?`, `${paths.length} file(s) will be deleted.`))) return;
-  for (const p of paths) await removeFile(p);
+/**
+ * Deletes or trashes: `mode` comes from a menu entry, otherwise the user is
+ * asked. `trash` lists what goes to the system trash (a folder as a whole),
+ * `files` what disappears from the collection.
+ */
+async function discard(title, message, { files, trash = files, mode }) {
+  // a menu entry picks the mode; deleting for good is still confirmed
+  if (!mode) mode = await askRemove(title, message);
+  else if (mode === 'delete' && !(await confirmAction(title.replace(/^Remove/, 'Delete'), `${message}\nThis cannot be undone.`))) return false;
+  if (!mode) return false;
+  if (mode === 'trash' && canTrash()) {
+    await trashPaths(trash);
+    toast(`Moved to the trash: ${trash.join(', ')}`);
+  } else {
+    if (mode === 'trash') return false;
+    for (const p of files) await removeFile(p);
+  }
+  return true;
+}
+
+/** Menu entries for removing something: trash (local app) and delete. */
+export const removeItems = (fn) => [
+  ...(canTrash() ? [{ label: 'Move to trash', action: () => fn('trash') }] : []),
+  { label: 'Delete', danger: true, action: () => fn('delete') },
+];
+
+export const deleteFolder = guard(async (dir, mode) => {
+  const files = Object.keys(app.files).filter((p) => p.startsWith(dir + '/'));
+  if (!(await discard(`Remove folder “${basename(dir)}”?`, `${files.length} file(s): ${dir}/`, { files, trash: [dir], mode }))) return;
   if (app.selected?.path?.startsWith(dir)) select(null);
 });
 
-export const deleteFile = guard(async (path, label) => {
-  if (!(await confirmAction(`Delete “${label || basename(path)}”?`, path))) return;
-  await removeFile(path);
+export const deleteFile = guard(async (path, label, mode) => {
+  if (!(await discard(`Remove “${label || basename(path)}”?`, path, { files: [path], mode }))) return;
   if (app.selected?.path === path) select(null);
 });
 
@@ -232,10 +256,9 @@ export const renameEnv = guard(async (env) => {
   if (app.env === env) setEnv(to);
 });
 
-export const deleteEnv = guard(async (env) => {
+export const deleteEnv = guard(async (env, mode) => {
   const files = [envPublicPath(env), envPrivatePath(env)].filter((f) => f in app.files);
-  if (!(await confirmAction(`Delete environment “${env}”?`, files.join(', ')))) return;
-  for (const f of files) await removeFile(f);
+  if (!(await discard(`Remove environment “${env}”?`, files.join(', '), { files, mode }))) return;
   if (app.env === env) setEnv('');
 });
 

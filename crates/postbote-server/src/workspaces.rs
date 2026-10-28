@@ -327,6 +327,38 @@ pub fn trash(state: &AppState, user: &str, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Local mode: moves files or folders of a collection to the system trash.
+pub fn trash_paths(state: &AppState, user: &str, id: &str, paths: &[String]) -> Result<()> {
+    if !matches!(state.cfg.mode, Mode::Local { .. }) {
+        bail!("only available in the local app");
+    }
+    let fs = open_fs(state, user, id)?;
+    let full = paths.iter().map(|p| fs.existing(p)).collect::<Result<Vec<_>>>()?;
+    trash::delete_all(&full).context("moving to the trash")?;
+    for p in paths {
+        fs.prune_parents(p);
+    }
+    Ok(())
+}
+
+/// Deletes a collection for good: local mode removes the folder (only if it
+/// contains a postbote.yaml), server mode the user's copy.
+pub fn purge(state: &AppState, user: &str, id: &str) -> Result<()> {
+    let dir = resolve(state, user, id)?;
+    if !dir.join(model::MANIFEST).is_file() && matches!(state.cfg.mode, Mode::Local { .. }) {
+        bail!("{} is not a collection folder (no postbote.yaml)", dir.display());
+    }
+    std::fs::remove_dir_all(&dir)?;
+    if matches!(state.cfg.mode, Mode::Local { .. }) {
+        let mut cfg = load_config()?;
+        if cfg.external.iter().any(|e| e.id == id) {
+            cfg.external.retain(|e| e.id != id);
+            save_config(&cfg)?;
+        }
+    }
+    Ok(())
+}
+
 pub fn remove(state: &AppState, user: &str, id: &str) -> Result<()> {
     match &state.cfg.mode {
         Mode::Local { .. } => {

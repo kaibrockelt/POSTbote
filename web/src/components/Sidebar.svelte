@@ -2,7 +2,7 @@
   import FolderPlusIcon from './FolderPlusIcon.svelte';
   import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
-  import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
+  import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, askRemove, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
   import { dnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
   import { envPublicPath, envPrivatePath } from '../lib/format.js';
@@ -23,24 +23,25 @@
     if (ws) await openWorkspace(ws).catch(fail);
   }
 
-  async function removeWs() {
+  // external folders can leave the list while staying on disk
+  async function unlistWs() {
+    const ws = app.ws;
+    if (!(await confirmAction(`Remove “${ws.name}” from the list?`, `The folder ${ws.path} stays on disk.`, 'Remove'))) return;
+    await removeWorkspace(ws, 'unlist').catch(fail);
+  }
+
+  async function deleteWs() {
     const ws = app.ws;
     const msg =
       ws.storage === 'disk'
-        ? 'The folder on disk is kept; it is only removed from this list.'
+        ? `The folder ${ws.path} with all requests, environments and data files. “Move to trash” keeps it restorable.`
         : ws.storage === 'browser'
           ? 'All files of this collection are deleted from this browser. Export it first if you want to keep it.'
           : 'All files of this collection are deleted from the server.';
-    if (!(await confirmAction(`Remove “${ws.name}”?`, msg, ws.storage === 'disk' ? 'Remove' : 'Delete'))) return;
-    await removeWorkspace(ws).catch(fail);
-  }
-
-  async function trashWs() {
-    const ws = app.ws;
-    const msg = `The folder ${ws.path} goes to the system trash, including environments and data files. You can restore it from there.`;
-    if (!(await confirmAction(`Move “${ws.name}” to the trash?`, msg, 'Move to trash'))) return;
-    await removeWorkspace(ws, { trash: true })
-      .then(() => toast(`Moved “${ws.name}” to the trash`))
+    const mode = await askRemove(`Remove collection “${ws.name}”?`, msg);
+    if (!mode) return;
+    await removeWorkspace(ws, mode)
+      .then(() => toast(mode === 'trash' ? `Moved “${ws.name}” to the trash` : `Deleted “${ws.name}”`))
       .catch(fail);
   }
 
@@ -59,8 +60,8 @@
       <button class="icon" title="Reload from disk, e.g. after git pull (⌘/Ctrl+R)" aria-label="Reload" onclick={() => reload().then(() => toast('Reloaded')).catch(fail)}><Icon name="reload" /></button>
     {/if}
     <button class="icon" title="Export as zip" aria-label="Export" onclick={() => (app.exporting = true)}><Icon name="export" /></button>
-    {#if !app.ws.managed}<button class="icon danger" title="Remove from list (the folder stays)" aria-label="Remove" onclick={removeWs}><Icon name="remove" /></button>{/if}
-    {#if app.ws.storage === 'disk'}<button class="icon danger" title="Move collection to the trash" aria-label="Move to trash" onclick={trashWs}><Icon name="trash" /></button>{/if}
+    {#if app.ws.storage === 'disk' && !app.ws.managed}<button class="icon danger" title="Remove from list (the folder stays)" aria-label="Remove from list" onclick={unlistWs}><Icon name="remove" /></button>{/if}
+    <button class="icon danger" title="Delete or move collection to trash" aria-label="Delete collection" onclick={deleteWs}><Icon name="trash" /></button>
     <button class="icon" title="New / open / import collection" aria-label="New collection" onclick={onNewWorkspace}>＋</button>
   </div>
 
@@ -94,7 +95,13 @@
         <span class="actions"><button class="icon" title="New runner" onclick={act.newWorkflow}>＋</button></span>
       </div>
       {#each tree.workflows as w (w.path)}
-        <div class="item" class:selected={sel('workflow', w.path)}>
+        <div class="item" class:selected={sel('workflow', w.path)} role="treeitem" aria-selected={sel('workflow', w.path)} tabindex="-1"
+          oncontextmenu={(ev) => openMenu(ev, [
+            { label: 'Open', action: () => select({ kind: 'workflow', path: w.path }) },
+            { label: 'Rename…', action: () => act.renameWorkflow(w.path) },
+            { separator: true },
+            ...act.removeItems((mode) => act.deleteFile(w.path, w.name, mode)),
+          ])}>
           <button class="label" onclick={() => select({ kind: 'workflow', path: w.path })}>
             ⇶ {w.name}
             {#if isDirty(w.path)}<span class="unsaved" title="unsaved changes">●</span>{/if}
@@ -102,7 +109,7 @@
           </button>
           <span class="actions">
             <button class="icon" title="Rename" onclick={() => act.renameWorkflow(w.path)}>✎</button>
-            <button class="icon" title="Delete" onclick={() => act.deleteFile(w.path, w.name)}>🗑</button>
+            <button class="icon" title="Delete or move to trash" onclick={() => act.deleteFile(w.path, w.name)}><Icon name="trash" size={13} /></button>
           </span>
         </div>
       {/each}
@@ -119,7 +126,7 @@
             { label: app.env === e.name ? 'Deactivate' : 'Activate', action: () => setEnv(app.env === e.name ? '' : e.name) },
             { label: 'Rename…', action: () => act.renameEnv(e.name) },
             { separator: true },
-            { label: 'Delete', danger: true, action: () => act.deleteEnv(e.name) },
+            ...act.removeItems((mode) => act.deleteEnv(e.name, mode)),
           ])}>
           <button class="label" onclick={() => select({ kind: 'env', path: e.name })}>
             <span class="dot" class:active={app.env === e.name}></span>
@@ -129,7 +136,7 @@
           </button>
           <span class="actions">
             <button class="icon" title="Rename" onclick={() => act.renameEnv(e.name)}>✎</button>
-            <button class="icon" title="Delete" onclick={() => act.deleteEnv(e.name)}>🗑</button>
+            <button class="icon" title="Delete or move to trash" onclick={() => act.deleteEnv(e.name)}><Icon name="trash" size={13} /></button>
           </span>
         </div>
       {/each}
