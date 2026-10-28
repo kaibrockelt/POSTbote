@@ -24,7 +24,7 @@ A native window opens. On first start a short wizard asks where your collections
 `~/Documents/POSTBote` (the platform's documents folder on Windows/Linux). Every collection is one
 folder in there and shows up automatically; folders elsewhere (e.g. inside a project repository) can
 be added as well. The choice is stored in the user config directory (`postbote/config.json`) and can be
-changed later via “Collections folder”.
+changed later in Settings (gear icon in the top bar).
 
 Installers for macOS/Windows/Linux are built with the Tauri CLI (`cargo install tauri-cli`,
 then `cargo tauri build` inside `desktop/`). Linux needs WebKitGTK (`libwebkit2gtk-4.1`), Windows the

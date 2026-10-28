@@ -10,6 +10,7 @@
   import Dialog from './components/Dialog.svelte';
   import Login from './components/Login.svelte';
   import Setup from './components/Setup.svelte';
+  import Settings from './components/Settings.svelte';
   import FolderPicker from './components/FolderPicker.svelte';
   import TabBar from './components/TabBar.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
@@ -20,7 +21,7 @@
   import { listEnvs } from './lib/format.js';
 
   let showWsDialog = $state(false);
-  let showFolderSettings = $state(false);
+  let showSettings = $state(false);
   let ready = $state(false);
   let startError = $state('');
 
@@ -74,6 +75,7 @@
     <header class="topbar">
       <div class="brand"><img src="/favicon.svg" alt="" width="20" height="20" /> POSTBote</div>
       <div class="grow"></div>
+      <span class="muted small saving">{app.saving ? 'Saving…' : ''}</span>
       {#if app.ws}
         <label class="env-select">
           <span class="muted">Environment</span>
@@ -83,14 +85,16 @@
           </select>
         </label>
       {/if}
-      <span class="muted small saving">{app.saving ? 'Saving…' : ''}</span>
-      {#if app.info.mode === 'local' && app.info.setup?.collectionsDir}
-        <button class="link small" title={app.info.setup.collectionsDir} onclick={() => (showFolderSettings = true)}>📁 Collections folder</button>
-      {/if}
       {#if app.info.mode === 'server'}
         <span class="muted small">{app.info.user}</span>
         {#if app.info.auth === 'local'}<button class="link small" onclick={logout}>Sign out</button>{/if}
       {/if}
+      <button class="icon gear" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
     </header>
 
     {#if app.ws}
@@ -139,8 +143,8 @@
 
 {#if ready && app.info?.authenticated && app.info.setup?.needed}
   <Setup />
-{:else if showFolderSettings}
-  <Setup mode="settings" onclose={() => (showFolderSettings = false)} />
+{:else if showSettings}
+  <Settings onclose={() => (showSettings = false)} />
 {/if}
 {#if showWsDialog}
   <WorkspaceDialog onclose={() => (showWsDialog = false)} />
@@ -187,7 +191,12 @@
     font-size: 12px;
   }
   .saving {
-    width: 60px;
+    min-width: 60px;
+    text-align: right;
+  }
+  .gear {
+    display: inline-flex;
+    margin-right: -6px;
   }
   .workarea {
     display: flex;
