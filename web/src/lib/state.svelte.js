@@ -234,7 +234,8 @@ export async function init() {
   app.info = await api.info();
   if (!app.info.authenticated) return;
   await loadWorkspaces();
-  const last = local.get('ws');
+  // the local app keeps it on disk (new port = new origin on every start)
+  const last = app.info.setup?.lastWorkspace || local.get('ws');
   const ws = app.workspaces.find((w) => w.id === last) || app.workspaces[0];
   if (ws) await openWorkspace(ws);
 }
@@ -252,6 +253,7 @@ export async function openWorkspace(ws) {
     app.results = {};
     await restoreUi(ws.id, files);
     local.set('ws', ws.id);
+    if (app.info.mode === 'local') api.setLastWorkspace(ws.id).catch(() => {});
   } finally {
     app.loading = false;
   }

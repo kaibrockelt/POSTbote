@@ -63,6 +63,7 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/api/browse", get(browse))
         .route("/api/setup", post(setup))
         .route("/api/session/{id}", get(get_session).put(put_session))
+        .route("/api/last-workspace/{id}", put(put_last_workspace))
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -139,6 +140,7 @@ fn local_setup(s: &AppState) -> Value {
         "needed": cfg.collections_dir.is_none(),
         "collectionsDir": cfg.collections_dir.map(|p| p.display().to_string()),
         "defaultCollectionsDir": workspaces::default_collections_dir().display().to_string(),
+        "lastWorkspace": workspaces::last_workspace(),
     })
 }
 
@@ -155,6 +157,14 @@ async fn put_session(State(s): State<Arc<AppState>>, _u: User, Path(id): Path<St
         return Err(err(StatusCode::NOT_FOUND, "sessions are stored in the browser in server mode"));
     }
     blocking(move || workspaces::save_session(&id, &v)).await?;
+    Ok(Json(json!({})))
+}
+
+async fn put_last_workspace(State(s): State<Arc<AppState>>, _u: User, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    if !s.is_local() {
+        return Err(err(StatusCode::NOT_FOUND, "only available in the local app"));
+    }
+    blocking(move || workspaces::set_last_workspace(&id)).await?;
     Ok(Json(json!({})))
 }
 

@@ -132,6 +132,28 @@ pub fn save_session(id: &str, session: &serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+/// The collection opened last (local app), so a restart reopens it. Browser
+/// storage cannot keep it: every start gets a new port and thus a new origin.
+fn last_workspace_file() -> Result<PathBuf> {
+    let dir = config_file()?.with_file_name("sessions");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join("last-workspace"))
+}
+
+pub fn last_workspace() -> Option<String> {
+    let id = std::fs::read_to_string(last_workspace_file().ok()?).ok()?;
+    let id = id.trim();
+    valid_id(id).then(|| id.to_string())
+}
+
+pub fn set_last_workspace(id: &str) -> Result<()> {
+    if !valid_id(id) {
+        bail!("invalid workspace id");
+    }
+    std::fs::write(last_workspace_file()?, id)?;
+    Ok(())
+}
+
 fn path_id(p: &Path) -> String {
     hex::encode(&sha2::Sha256::digest(p.to_string_lossy().as_bytes())[..6])
 }

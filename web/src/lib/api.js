@@ -50,6 +50,7 @@ export const api = {
   importZip: (blob) => call('POST', '/api/import', blob),
   getSession: (id) => call('GET', `/api/session/${id}`),
   putSession: (id, session) => call('PUT', `/api/session/${id}`, session),
+  setLastWorkspace: (id) => call('PUT', `/api/last-workspace/${id}`),
   setup: (collectionsDir) => call('POST', '/api/setup', { collectionsDir }),
   browse: (path) => call('GET', '/api/browse' + (path ? `?path=${encodeURIComponent(path)}` : '')),
 };
