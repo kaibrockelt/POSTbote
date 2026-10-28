@@ -158,7 +158,7 @@
     return Object.keys(obj).filter(function (h) { return h.toLowerCase() === k; })[0];
   }
   g.__makeReq = function (d) {
-    var r = { name: d.name, method: d.method, url: d.url, body: d.body, bodyType: d.bodyType,
+    var r = { name: d.name, method: d.method, url: d.url, body: d.body, bodyType: d.bodyType, variables: d.variables || '',
               headers: {}, params: d.params || [], fields: d.fields || [] };
     (d.headers || []).forEach(function (h) { r.headers[h[0]] = h[1]; });
     r.getHeader = function (k) { var h = headerFind(r.headers, k); return h === undefined ? undefined : r.headers[h]; };
@@ -177,6 +177,7 @@
     return {
       method: String(r.method || 'GET'), url: String(r.url || ''),
       body: r.body == null ? '' : str(r.body), bodyType: String(r.bodyType || ''),
+      variables: r.variables == null ? '' : str(r.variables),
       headers: Object.keys(r.headers || {}).map(function (k) { return [k, String(r.headers[k])]; }),
       params: (r.params || []).map(function (p) { return { key: String(p.key), value: p.value == null ? '' : String(p.value) }; }),
       fields: (r.fields || []).map(function (f) { return { key: String(f.key), value: f.value == null ? '' : String(f.value), file: f.file ? String(f.file) : '' }; })

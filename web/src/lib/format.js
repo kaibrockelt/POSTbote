@@ -102,7 +102,7 @@ export const emptyRequest = (name) => ({
   params: [],
   headers: [],
   auth: { type: 'inherit' },
-  body: { type: 'none', content: '', fields: [], file: '' },
+  body: { type: 'none', content: '', fields: [], file: '', variables: '' },
   scripts: { pre: '', post: '' },
   docs: '',
 });
@@ -120,7 +120,7 @@ export function parseRequest(text) {
       params: normKv(doc.params),
       headers: normKv(doc.headers),
       auth: normAuth(doc.auth),
-      body: { type: str(doc.body?.type) || 'none', content: str(doc.body?.content), fields: normKv(doc.body?.fields), file: str(doc.body?.file) },
+      body: { type: str(doc.body?.type) || 'none', content: str(doc.body?.content), fields: normKv(doc.body?.fields), file: str(doc.body?.file), variables: str(doc.body?.variables) },
       scripts: normScripts(doc.scripts),
       docs: str(doc.docs),
       seq: doc.seq,
@@ -133,6 +133,7 @@ export function serializeRequest(r) {
   const t = r.body?.type || 'none';
   if (t === 'form' || t === 'multipart') body = prune({ type: t, fields: cleanKv(r.body.fields) });
   else if (t === 'file') body = { type: t, file: r.body.file || '' };
+  else if (t === 'graphql') body = prune({ type: t, content: r.body.content, variables: r.body.variables });
   else if (t !== 'none') body = prune({ type: t, content: r.body.content });
   return dump(
     prune({

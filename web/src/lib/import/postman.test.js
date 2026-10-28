@@ -130,7 +130,7 @@ test('requests: url, path variables, params, headers, auth, body', () => {
   assert.equal(login.body.type, 'form');
   assert.deepEqual(login.body.fields.map((f) => f.disabled), [false, true]);
 
-  assert.deepEqual(JSON.parse(search.body.content), { query: '{ users { id } }', variables: { n: 1 } });
+  assert.deepEqual([search.body.type, search.body.content, JSON.parse(search.body.variables)], ['graphql', '{ users { id } }', { n: 1 }]);
 });
 
 test('environments and warnings', () => {
@@ -151,7 +151,7 @@ test('environments and warnings', () => {
   assert.match(w, /2 Postman scripts were imported as comments/);
   assert.match(w, /1 saved example response was not imported/);
   assert.match(w, /form file “file”/);
-  assert.match(w, /GraphQL/);
+  assert.doesNotMatch(w, /GraphQL/);
 });
 
 test('v2.0 auth objects, v1 and missing collection', () => {

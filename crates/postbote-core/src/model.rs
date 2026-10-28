@@ -58,13 +58,16 @@ pub struct Auth {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Body {
-    /// none | json | text | xml | form | multipart | file
+    /// none | json | graphql | text | xml | form | multipart | file
     #[serde(rename = "type")]
     pub kind: String,
+    /// raw body, or the query for graphql
     pub content: String,
     pub fields: Vec<Kv>,
     /// collection-relative path sent as the raw body (type file)
     pub file: String,
+    /// graphql: variables as JSON text
+    pub variables: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

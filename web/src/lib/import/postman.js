@@ -215,15 +215,14 @@ function convertBody(b, headers, where, ctx) {
       return { type: 'multipart', content: '', fields };
     }
     case 'graphql': {
-      let variables = b.graphql?.variables;
+      let variables = b.graphql?.variables ?? '';
+      if (typeof variables !== 'string') variables = JSON.stringify(variables, null, 2);
       try {
-        variables = typeof variables === 'string' && variables.trim() ? JSON.parse(variables) : variables || undefined;
+        if (variables.trim()) variables = JSON.stringify(JSON.parse(variables), null, 2);
       } catch {
-        ctx.warnings.add(`${where}: GraphQL variables are not valid JSON and were dropped`);
-        variables = undefined;
+        ctx.warnings.add(`${where}: GraphQL variables are not valid JSON yet`);
       }
-      ctx.warnings.add(`${where}: GraphQL is imported as a JSON body ({ query, variables })`);
-      return { type: 'json', content: JSON.stringify({ query: str(b.graphql?.query), variables }, null, 2), fields: [] };
+      return { type: 'graphql', content: str(b.graphql?.query), fields: [], variables };
     }
     case 'file': {
       const src = str(b.file?.src).split(/[\\/]/).pop();

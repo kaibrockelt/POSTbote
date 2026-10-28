@@ -50,9 +50,11 @@ headers:
 auth:
   type: inherit               # inherit | none | bearer | basic | apikey
 body:
-  type: json                  # none | json | text | xml | form | multipart | file
+  type: json                  # none | json | graphql | text | xml | form | multipart | file
   content: |
     {"name": "{{name}}"}
+  # graphql: content is the query, variables a JSON text; sent as {"query", "variables"}
+  #   variables: '{"limit": 10}'
   # form / multipart use fields instead of content:
   # fields:
   #   - key: avatar
