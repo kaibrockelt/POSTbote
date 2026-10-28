@@ -1,0 +1,16 @@
+name: Create user
+method: POST
+url: "{{baseUrl}}/anything/users"
+body:
+  type: json
+  content: |
+    {
+      "name": "{{name}}",
+      "role": "{{role}}"
+    }
+scripts:
+  post: |
+    const echo = res.json();
+    test('created', () => expect(res.status).toBe(200));
+    test('bearer token inherited from folder', () => expect(echo.headers.Authorization).toMatch(/^Bearer demo-/));
+    test('body interpolated', () => expect(echo.json.name).toBe(vars.resolve('name')));

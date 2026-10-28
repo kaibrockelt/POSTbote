@@ -1,0 +1,17 @@
+name: Login
+method: POST
+url: "{{baseUrl}}/post"
+body:
+  type: json
+  content: |
+    {
+      "user": "{{user}}",
+      "password": "{{password}}"
+    }
+scripts:
+  post: |
+    test('login accepted', () => expect(res.status).toBe(200));
+    // httpbin echoes the body; a real API would return a token here.
+    // vars live only for this run, so the token never touches a file.
+    vars.set('token', 'demo-' + util.hash('sha256', res.json().json.user).slice(0, 16));
+    console.log('token stored in vars');

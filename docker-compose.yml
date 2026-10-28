@@ -1,0 +1,24 @@
+# Example team deployment. Create the first user with:
+#   docker compose run --rm postbote user add alice
+services:
+  postbote:
+    build: .
+    image: postbote:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - postbote-data:/data
+    environment:
+      # none | local (users.json, see above) | header (behind an auth proxy, e.g. oauth2-proxy)
+      POSTBOTE_AUTH: local
+      # POSTBOTE_AUTH_HEADER: X-Forwarded-User
+      # disable the opt-in server-side storage of collections entirely
+      # POSTBOTE_NO_SERVER_STORAGE: "true"
+      # block requests from scripts/requests into private networks (SSRF protection)
+      # POSTBOTE_DENY_PRIVATE_NETWORKS: "true"
+      # set when served via HTTPS
+      # POSTBOTE_SECURE_COOKIES: "true"
+
+volumes:
+  postbote-data:

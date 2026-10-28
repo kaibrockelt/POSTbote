@@ -1,0 +1,116 @@
+# Collection format
+
+Everything is UTF-8 text. YAML files only contain fields that differ from the defaults, so diffs stay
+small. Multi-line bodies and scripts are written as YAML block literals (`|`).
+
+## `postbote.yaml`
+
+```yaml
+version: 1
+name: My API
+settings:
+  commitEnvironments: false   # true: *.env files are committed as well
+  timeoutMs: 30000            # request timeout
+  scriptTimeoutMs: 10000      # per script
+  followRedirects: true
+  verifyTls: true
+variables:                    # committed, non-secret defaults
+  baseUrl: https://api.example.com
+headers:
+  - key: Accept
+    value: application/json
+auth:                         # default auth for all requests
+  type: bearer
+  token: "{{token}}"
+scripts:
+  pre: |                      # before every request
+  post: |                     # after every request
+```
+
+## Folders: `requests/**/_folder.yaml`
+
+Optional. Same keys as the collection: `name`, `variables`, `headers`, `auth`, `scripts`. Applied to
+every request below the folder. An empty folder is kept alive by its `_folder.yaml` (git does not
+track empty directories).
+
+## Requests: `requests/**/<name>.req.yaml`
+
+```yaml
+name: Create user
+method: POST
+url: "{{baseUrl}}/users"
+params:                       # appended URL-encoded to the URL
+  - key: dryRun
+    value: "true"
+    disabled: true            # kept, but not sent
+headers:
+  - key: X-Tenant
+    value: "{{tenant}}"
+auth:
+  type: inherit               # inherit | none | bearer | basic | apikey
+body:
+  type: json                  # none | json | text | xml | form | multipart
+  content: |
+    {"name": "{{name}}"}
+  # form / multipart use fields instead of content:
+  # fields:
+  #   - key: avatar
+  #     file: data/avatar.svg   # multipart: send a collection file
+scripts:
+  pre: |
+  post: |
+docs: |
+  Markdown documentation.
+seq: 10                       # optional sort order in the sidebar
+```
+
+Auth types: `bearer` (`token`), `basic` (`username`, `password`), `apikey` (`key`, `value`,
+`in: header|query`). An explicit `Authorization` header always wins over `auth`.
+
+## Workflows: `workflows/**/<name>.flow.yaml`
+
+```yaml
+name: Onboard users
+data: data/users.csv          # CSV with header row, or a JSON array; one iteration per row
+settings:
+  stopOnFailure: true         # stop when a step has an error, script error or failed test
+  delayMs: 0                  # pause between steps
+  maxIterations: 0            # 0 = all rows
+scripts:
+  pre: |                      # once, before the first iteration (may set wf.rows)
+  post: |                     # once, after the last iteration
+steps:
+  - name: login               # used by wf.goto('login')
+    request: requests/auth/login.req.yaml
+    if: wf.iteration === 0    # optional JavaScript condition
+  - name: create
+    request: requests/users/create.req.yaml
+    scripts:                  # run after the request's own pre/post scripts
+      post: |
+        if (res.status === 409) wf.goto('verify');
+```
+
+## Environments: `environments/<name>.env` and `<name>.env.pub`
+
+dotenv syntax: `KEY=value`, `# comments`, optional `export`, `"double quotes"` with `\n` escapes,
+`'single quotes'` literal. `*.env` is private (excluded by the managed `.gitignore` block),
+`*.env.pub` is public and meant to be committed. `env.set()` in scripts updates the active
+environment file in place and keeps comments and order.
+
+## Variables
+
+`{{name}}` works in URL, params, headers, body, form fields and auth. Lookup order:
+
+1. runtime `vars` (set by scripts, live for one run/workflow)
+2. the current workflow data row
+3. the active environment
+4. folder variables (innermost first)
+5. collection variables
+
+Dynamic values: `{{$uuid}}`, `{{$timestamp}}`, `{{$timestampMs}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`.
+Unknown names are left as-is; an unresolved variable in the URL is reported as an error.
+
+## Script order
+
+For each request: collection pre → folder pre (outer → inner) → request pre → workflow step pre,
+then the request is sent, then collection post → folder post → request post → workflow step post.

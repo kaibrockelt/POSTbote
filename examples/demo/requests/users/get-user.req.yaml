@@ -1,0 +1,10 @@
+name: Get user
+method: GET
+url: "{{baseUrl}}/anything/users/{{name}}"
+params:
+  - key: fields
+    value: name,role
+scripts:
+  post: |
+    test('status 200', () => expect(res.status).toBe(200));
+    test('query sent', () => expect(res.json().args.fields).toBe('name,role'));

@@ -1,0 +1,34 @@
+[package]
+name = "postbote-server"
+description = "HTTP API and web UI of postbote (local app and team server)"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "postbote_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "postbote"
+path = "src/main.rs"
+
+[dependencies]
+postbote-core = { path = "../postbote-core" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+mime_guess = "2"
+clap = { version = "4", features = ["derive", "env"] }
+bcrypt = "0.19"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.9"
+base64 = "0.22"
+dirs = "6"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+rpassword = "7"
+open = "5"

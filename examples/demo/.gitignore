@@ -1,0 +1,5 @@
+# >>> POSTBote (managed block, edit via collection settings) >>>
+# private environments stay local, public ones (*.env.pub) are committed
+*.env
+# <<< POSTBote <<<
+out/

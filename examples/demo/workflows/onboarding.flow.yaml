@@ -1,0 +1,26 @@
+name: Onboard users
+data: data/users.csv
+settings:
+  stopOnFailure: true
+scripts:
+  pre: |
+    // wf.rows comes from data/users.csv; scripts may filter or replace it
+    wf.rows = wf.rows.filter(r => r.name !== 'grace');
+    vars.set('report', []);
+  post: |
+    const report = vars.get('report');
+    fs.write('out/onboarding.csv', csv.stringify(report));
+    test('every user onboarded', () => expect(report).toHaveLength(wf.rows.length));
+steps:
+  - name: login
+    request: requests/auth/login.req.yaml
+    if: wf.iteration === 0
+  - name: create
+    request: requests/users/create-user.req.yaml
+  - name: verify
+    request: requests/users/get-user.req.yaml
+    scripts:
+      post: |
+        const report = vars.get('report');
+        report.push({ name: wf.row.name, role: wf.row.role, status: res.status, ms: res.timeMs });
+        vars.set('report', report);

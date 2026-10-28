@@ -1,0 +1,4 @@
+name: Users
+auth:
+  type: bearer
+  token: "{{token}}"

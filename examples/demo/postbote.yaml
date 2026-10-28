@@ -1,0 +1,11 @@
+version: 1
+name: Demo (httpbin)
+variables:
+  baseUrl: https://httpbin.org
+headers:
+  - key: Accept
+    value: application/json
+scripts:
+  pre: |
+    // runs before every request of the collection
+    req.setHeader('X-Request-Id', util.uuid());
