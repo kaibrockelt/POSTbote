@@ -228,66 +228,6 @@ fn script_limits() {
 }
 
 #[test]
-fn nested_variables_only_from_configuration() {
-fn file_body_sends_the_file() {
-fn graphql_body_is_sent_as_json_envelope() {
-    let base = echo_server();
-    let fs = collection(
-        &base,
-        &[
-            // collection baseUrl is overridden by an environment value that references other variables
-            ("environments/dev.env.pub", "token=\nregion=eu\nhost=api-{{region}}\napi=/v{{version}}\nversion=2\nloopA={{loopB}}\nloopB={{loopA}}\n"),
-            (
-                "requests/nested.req.yaml",
-                r#"name: Nested
-url: "{{baseUrl}}/echo{{api}}/{{host}}"
-headers:
-  - key: X-From
-    value: "{{fromResponse}}"
-  - key: X-Loop
-    value: "{{loopA}}"
-scripts:
-  pre: |
-    vars.set('fromResponse', '{{token}}');
-  post: |
-    const j = res.json();
-    test('configured values are resolved', () => expect(j.path).toBe('/echo/v2/api-eu'));
-    test('runtime values are not', () => expect(j.headers['x-from']).toBe('{{token}}'));
-    test('cycles stop', () => expect(j.headers['x-loop']).toMatch(/^\{\{loop[AB]\}\}$/));
-"#,
-            ),
-        ],
-    );
-    let r = run(fs, Target::Request("requests/nested.req.yaml".into()), opts()).request.unwrap();
-    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
-    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
-            ("data/upload.bin", "raw-bytes"),
-            (
-                "requests/upload.req.yaml",
-                r#"name: Upload
-method: PUT
-url: "{{baseUrl}}/upload"
-body:
-  type: file
-  file: data/upload.bin
-scripts:
-  post: |
-    const j = res.json();
-    test('body', () => expect(j.body).toBe('raw-bytes'));
-    test('content type', () => expect(j.headers['content-type']).toBe('application/octet-stream'));
-"#,
-            ),
-            ("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n"),
-        ],
-    );
-    let r = run(fs, Target::Request("requests/upload.req.yaml".into()), opts()).request.unwrap();
-    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
-    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
-    assert_eq!(r.request.unwrap().body, "<9 bytes of binary data>");
-
-    let fs = collection(&base, &[("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n")]);
-    let r = run(fs, Target::Request("requests/missing.req.yaml".into()), opts()).request.unwrap();
-    assert!(r.error.as_deref().unwrap_or("").contains("body file"), "{:?}", r.error);
 fn cookies_persist_per_environment() {
     let base = echo_server();
     let files = |extra: &[(&str, &str)]| -> BTreeMap<String, String> {
@@ -322,6 +262,83 @@ fn cookies_persist_per_environment() {
     let fs = MemFs::new(files(&[(".cookies/dev.json", &jar)])).unwrap();
     let r = run(Box::new(fs), Target::Request("requests/me.req.yaml".into()), RunOptions::default()).request.unwrap();
     assert!(r.tests.iter().any(|t| !t.passed));
+}
+
+#[test]
+fn nested_variables_only_from_configuration() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
+            // collection baseUrl is overridden by an environment value that references other variables
+            ("environments/dev.env.pub", "token=\nregion=eu\nhost=api-{{region}}\napi=/v{{version}}\nversion=2\nloopA={{loopB}}\nloopB={{loopA}}\n"),
+            (
+                "requests/nested.req.yaml",
+                r#"name: Nested
+url: "{{baseUrl}}/echo{{api}}/{{host}}"
+headers:
+  - key: X-From
+    value: "{{fromResponse}}"
+  - key: X-Loop
+    value: "{{loopA}}"
+scripts:
+  pre: |
+    vars.set('fromResponse', '{{token}}');
+  post: |
+    const j = res.json();
+    test('configured values are resolved', () => expect(j.path).toBe('/echo/v2/api-eu'));
+    test('runtime values are not', () => expect(j.headers['x-from']).toBe('{{token}}'));
+    test('cycles stop', () => expect(j.headers['x-loop']).toMatch(/^\{\{loop[AB]\}\}$/));
+"#,
+            ),
+        ],
+    );
+    let r = run(fs, Target::Request("requests/nested.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
+}
+
+#[test]
+fn file_body_sends_the_file() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
+            ("data/upload.bin", "raw-bytes"),
+            (
+                "requests/upload.req.yaml",
+                r#"name: Upload
+method: PUT
+url: "{{baseUrl}}/upload"
+body:
+  type: file
+  file: data/upload.bin
+scripts:
+  post: |
+    const j = res.json();
+    test('body', () => expect(j.body).toBe('raw-bytes'));
+    test('content type', () => expect(j.headers['content-type']).toBe('application/octet-stream'));
+"#,
+            ),
+            ("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n"),
+        ],
+    );
+    let r = run(fs, Target::Request("requests/upload.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
+    assert_eq!(r.request.unwrap().body, "<9 bytes of binary data>");
+
+    let fs = collection(&base, &[("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n")]);
+    let r = run(fs, Target::Request("requests/missing.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.as_deref().unwrap_or("").contains("body file"), "{:?}", r.error);
+}
+
+#[test]
+fn graphql_body_is_sent_as_json_envelope() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
             (
                 "requests/gql.req.yaml",
                 r#"name: Users
