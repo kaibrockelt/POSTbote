@@ -44,7 +44,7 @@ pub struct Http {
 }
 
 impl Http {
-    pub fn new(settings: &Settings, deny_private: bool, max_body: usize) -> anyhow::Result<Self> {
+    pub fn new(settings: &Settings, deny_private: bool, max_body: usize, jar: Arc<CookieJar>) -> anyhow::Result<Self> {
         let follow = settings.follow_redirects();
         let policy = Policy::custom(move |attempt| {
             if !follow {
@@ -59,7 +59,7 @@ impl Http {
         });
         let mut b = Client::builder()
             .timeout(Duration::from_millis(settings.timeout_ms()))
-            .cookie_store(true)
+            .cookie_provider(jar)
             .redirect(policy)
             .user_agent(concat!("postbote/", env!("CARGO_PKG_VERSION")))
             .tls_danger_accept_invalid_certs(!settings.verify_tls());
@@ -190,5 +190,96 @@ impl Resolve for PublicOnlyResolver {
             }
             Ok(Box::new(public.into_iter()) as Addrs)
         })
+    }
+}
+
+// ---------------------------------------------------------------- cookie jar
+
+/// Cookies kept across runs, per collection and environment (stored by the
+/// runner in `.cookies/<env>.json`). Session cookies are kept as well, so a
+/// login survives until the jar is cleared.
+pub struct CookieJar {
+    store: std::sync::Mutex<cookie_store::CookieStore>,
+    dirty: std::sync::atomic::AtomicBool,
+}
+
+impl CookieJar {
+    pub fn load(json: &str) -> Self {
+        let store = cookie_store::serde::json::load_all(json.as_bytes()).unwrap_or_default();
+        Self { store: std::sync::Mutex::new(store), dirty: false.into() }
+    }
+
+    pub fn to_json(&self) -> String {
+        let store = self.store.lock().unwrap();
+        let mut out = Vec::new();
+        // expired cookies are dropped, session cookies kept
+        let mut live = cookie_store::CookieStore::default();
+        for c in store.iter_unexpired() {
+            if let Ok(url) = url::Url::parse(&format!("https://{}{}", cookie_host(c), c.path.as_ref())) {
+                let _ = live.insert_raw(c, &url);
+            }
+        }
+        let _ = cookie_store::serde::json::save_incl_expired_and_nonpersistent(&live, &mut out);
+        String::from_utf8(out).unwrap_or_default()
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Value of the first unexpired cookie with this name (for `url` if given).
+    pub fn get(&self, name: &str, url: Option<&url::Url>) -> Option<String> {
+        let store = self.store.lock().unwrap();
+        match url {
+            Some(u) => store.matches(u).into_iter().find(|c| c.name() == name).map(|c| c.value().to_string()),
+            None => store.iter_unexpired().find(|c| c.name() == name).map(|c| c.value().to_string()),
+        }
+    }
+
+    pub fn all(&self) -> Vec<serde_json::Value> {
+        let store = self.store.lock().unwrap();
+        store
+            .iter_unexpired()
+            .map(|c| serde_json::json!({ "name": c.name(), "value": c.value(), "domain": cookie_host(c), "path": c.path.as_ref() }))
+            .collect()
+    }
+
+    pub fn set(&self, name: &str, value: &str, url: &url::Url) -> Result<(), String> {
+        let raw = cookie_store::RawCookie::new(name.to_string(), value.to_string());
+        self.store.lock().unwrap().insert_raw(&raw, url).map_err(|e| e.to_string())?;
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    pub fn clear(&self) {
+        self.store.lock().unwrap().clear();
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn cookie_host(c: &cookie_store::Cookie) -> String {
+    match &c.domain {
+        cookie_store::CookieDomain::HostOnly(h) | cookie_store::CookieDomain::Suffix(h) => h.clone(),
+        _ => String::new(),
+    }
+}
+
+impl reqwest::cookie::CookieStore for CookieJar {
+    fn set_cookies(&self, headers: &mut dyn Iterator<Item = &reqwest::header::HeaderValue>, url: &url::Url) {
+        let cookies: Vec<_> = headers
+            .filter_map(|h| h.to_str().ok())
+            .filter_map(|s| cookie_store::RawCookie::parse(s.to_string()).ok())
+            .collect();
+        if cookies.is_empty() {
+            return;
+        }
+        self.store.lock().unwrap().store_response_cookies(cookies.into_iter(), url);
+        self.dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn cookies(&self, url: &url::Url) -> Option<reqwest::header::HeaderValue> {
+        let store = self.store.lock().unwrap();
+        let s = store.get_request_values(url).map(|(n, v)| format!("{n}={v}")).collect::<Vec<_>>().join("; ");
+        if s.is_empty() { None } else { reqwest::header::HeaderValue::from_str(&s).ok() }
     }
 }

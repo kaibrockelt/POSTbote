@@ -86,7 +86,7 @@ A collection is a folder ([details](docs/collection-format.md)):
 ```text
 my-api/
 ├── postbote.yaml                         # name, settings, variables, headers, auth, scripts
-├── .gitignore                        # managed block: *.env stays local
+├── .gitignore                        # managed block: *.env and .cookies/ stay local
 ├── environments/
 │   ├── staging.env.pub               # shared values of "staging" (committed)
 │   └── staging.env                   # private overrides/secrets of "staging" (gitignored)

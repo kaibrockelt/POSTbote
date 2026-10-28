@@ -14,6 +14,7 @@
   const files = $derived(
     Object.fromEntries(
       Object.entries($state.snapshot(app.files)).filter(([p]) => {
+        if (p.startsWith('.cookies/')) return false; // session cookies are credentials
         if (!isEnvFile(p)) return true;
         if (!chosen(envName(p))) return false;
         return isPublicEnv(p) || withPrivate;

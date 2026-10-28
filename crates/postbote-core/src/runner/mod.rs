@@ -259,7 +259,34 @@ struct State {
     source: String,
     slots: HashMap<String, String>,
     http: Http,
+    jar: Arc<http::CookieJar>,
+    jar_path: String,
     clock: Arc<Clock>,
+}
+
+/// `.cookies/<env>.json`; requests without an environment use `_none`.
+pub fn cookie_jar_path(env: Option<&str>) -> String {
+    format!(".cookies/{}.json", env.filter(|e| !e.is_empty()).unwrap_or("_none"))
+}
+
+const GITIGNORE_END: &str = "# <<< POSTBote <<<";
+
+/// Makes sure the cookie folder is ignored by git, also in collections whose
+/// .gitignore predates the cookie jar.
+fn ignore_cookies(fs: &mut dyn Fs) -> anyhow::Result<()> {
+    let text = match fs.read(".gitignore") {
+        Ok(t) => t,
+        Err(e) if is_not_found(&e) => String::new(),
+        Err(e) => return Err(e),
+    };
+    if text.lines().any(|l| l.trim() == ".cookies/") {
+        return Ok(());
+    }
+    let next = match text.find(GITIGNORE_END) {
+        Some(i) => format!("{}.cookies/\n{}", &text[..i], &text[i..]),
+        None => format!("{}{}.cookies/\n", text, if text.is_empty() || text.ends_with('\n') { "" } else { "\n" }),
+    };
+    fs.write(".gitignore", &next)
 }
 
 fn var_text(v: &Value) -> String {
@@ -411,7 +438,10 @@ impl Engine {
         }
         let env_name = opts.env.clone();
 
-        let http = Http::new(&col.settings, opts.deny_private, opts.max_body)?;
+        // cookies persist per environment (private, never committed)
+        let jar_path = cookie_jar_path(env_name.as_deref());
+        let jar = Arc::new(http::CookieJar::load(&fs.read(&jar_path).unwrap_or_default()));
+        let http = Http::new(&col.settings, opts.deny_private, opts.max_body, jar.clone())?;
         let script_timeout = col.settings.script_timeout_ms();
         let st = Rc::new(RefCell::new(State {
             fs: Tracking::new(fs),
@@ -429,6 +459,8 @@ impl Engine {
             source: String::new(),
             slots: HashMap::new(),
             http,
+            jar,
+            jar_path,
             clock: clock.clone(),
         }));
 
@@ -868,6 +900,11 @@ impl Engine {
                 let text = dotenv::update(&old, &st.env_changes, &st.env_order);
                 st.fs.write(&p, &text).map_err(|e| format!("{e:#}"))?;
             }
+        }
+        if st.jar.is_dirty() {
+            let (path, json) = (st.jar_path.clone(), st.jar.to_json());
+            st.fs.write(&path, &json).map_err(|e| format!("{e:#}"))?;
+            ignore_cookies(&mut st.fs).map_err(|e| format!("{e:#}"))?;
         }
         Ok(std::mem::take(&mut st.fs.changes))
     }

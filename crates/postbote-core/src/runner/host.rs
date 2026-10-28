@@ -58,6 +58,21 @@ impl State {
             }
             "slot" => some(self.slots.get(&arg_str(args, 0)).cloned().unwrap_or_default()),
 
+            "cookies.get" => {
+                let url = Some(arg_str(args, 1)).filter(|u| !u.is_empty()).map(|u| url::Url::parse(&u)).transpose().map_err(|e| format!("cookies.get: {e}"))?;
+                Ok(self.jar.get(&arg_str(args, 0), url.as_ref()).map(Value::String))
+            }
+            "cookies.all" => some(Value::Array(self.jar.all())),
+            "cookies.set" => {
+                let url = url::Url::parse(&arg_str(args, 2)).map_err(|e| format!("cookies.set needs the URL the cookie belongs to: {e}"))?;
+                self.jar.set(&arg_str(args, 0), &arg_str(args, 1), &url)?;
+                Ok(None)
+            }
+            "cookies.clear" => {
+                self.jar.clear();
+                Ok(None)
+            }
+
             "env.name" => Ok(self.env_name.clone().map(Value::String)),
             "env.get" => Ok(self.env.get(&arg_str(args, 0)).cloned().map(Value::String)),
             "env.set" => {

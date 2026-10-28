@@ -4,6 +4,7 @@
   import AuthEditor from './AuthEditor.svelte';
   import ScriptsEditor from './ScriptsEditor.svelte';
   import FileEditor from './FileEditor.svelte';
+  import CookieJar from './CookieJar.svelte';
   import { setContext } from 'svelte';
   import { variableScope } from '../lib/vars.js';
   import { fileDoc } from '../lib/doc.svelte.js';
@@ -46,6 +47,7 @@
         { id: 'auth', label: 'Auth' },
         { id: 'scripts', label: 'Scripts' },
         { id: 'storage', label: 'Storage & Git' },
+        { id: 'cookies', label: 'Cookies' },
       ]}
       bind:active={tab}
     />
@@ -68,6 +70,9 @@
       {:else if tab === 'scripts'}
         <ScriptsEditor bind:scripts={d.doc.scripts} />
         <p class="hint">Runs before/after every request of the collection (before folder and request scripts).</p>
+      {:else if tab === 'cookies'}
+        <p class="hint">Requests without an active environment use this jar; every environment has its own (see the environment).</p>
+        <CookieJar env="" />
       {:else if tab === 'storage'}
         <h3>Git</h3>
         <label class="check">

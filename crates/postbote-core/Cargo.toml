@@ -13,6 +13,7 @@ serde_json.workspace = true
 serde_norway.workspace = true
 rquickjs = "0.14"
 reqwest = { version = "0.13", features = ["blocking", "cookies", "multipart", "form"] }
+cookie_store = "0.22"
 tokio = { version = "1", features = ["net"] }
 csv = "1"
 base64 = "0.22"
