@@ -1,0 +1,13 @@
+# Release image: packages the static binaries built by the release workflow
+# (docker-bin/postbote-linux-<arch>). For a build from source use ./Dockerfile.
+FROM alpine:3
+ARG TARGETARCH
+RUN apk add --no-cache ca-certificates && adduser -D -H -u 10001 postbote && mkdir /data && chown postbote /data
+COPY docker-bin/postbote-linux-${TARGETARCH} /usr/local/bin/postbote
+USER postbote
+VOLUME /data
+ENV POSTBOTE_ADDR=0.0.0.0:8080 \
+    POSTBOTE_DATA=/data
+EXPOSE 8080
+ENTRYPOINT ["postbote"]
+CMD ["serve"]

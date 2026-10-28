@@ -1,0 +1,229 @@
+# Builds and publishes a release when a version tag is pushed:
+#   scripts/bump-version.sh 0.2.0 && git commit -am "Release 0.2.0" && git tag -a v0.2.0 -m v0.2.0 && git push --follow-tags
+#
+# Produces a *draft* GitHub release with
+#   - desktop app: macOS .dmg (universal), Windows .exe/.msi, Linux .AppImage/.deb/.rpm
+#   - CLI/server binary `postbote` for macOS, Windows and Linux (static, x86_64 + arm64)
+#   - Docker image ghcr.io/<owner>/postbote (linux/amd64 + linux/arm64)
+# Review the draft on GitHub and publish it.
+#
+# Code signing is optional. Unsigned builds work but show OS warnings.
+# macOS: add the secrets APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD,
+#   APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific), APPLE_TEAM_ID
+#   and set the repository variable MACOS_SIGNING=true.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version matches tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          tauri_version=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' desktop/tauri.conf.json | head -1)
+          if [ "$tag" != "$cargo_version" ] || [ "$tag" != "$tauri_version" ]; then
+            echo "::error::tag $tag does not match Cargo.toml ($cargo_version) / tauri.conf.json ($tauri_version). Run scripts/bump-version.sh $tag"
+            exit 1
+          fi
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "POSTBote $GITHUB_REF_NAME" --notes-file .github/release-notes.md
+          echo "id=$(gh release view "$GITHUB_REF_NAME" --json databaseId -q .databaseId)" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-latest
+            args: ''
+            rust-targets: ''
+          - os: ubuntu-22.04 # oldest supported glibc for the AppImage
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: desktop
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Build web UI
+        working-directory: web
+        run: npm ci && npm run build
+      - name: Build and upload desktop bundles (unsigned)
+        if: runner.os != 'macOS' || vars.MACOS_SIGNING != 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: desktop
+          tauriScript: npx --yes @tauri-apps/cli@2
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: ${{ matrix.args }}
+      - name: Build and upload desktop bundles (signed + notarized)
+        if: runner.os == 'macOS' && vars.MACOS_SIGNING == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: desktop
+          tauriScript: npx --yes @tauri-apps/cli@2
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: ${{ matrix.args }}
+
+  cli:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            name: linux-x86_64
+            docker-arch: amd64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            name: linux-arm64
+            docker-arch: arm64
+          - os: macos-latest
+            target: universal
+            name: macos-universal
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target == 'universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
+      - name: musl toolchain
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build web UI
+        working-directory: web
+        run: npm ci && npm run build
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = universal ]; then
+            cargo build --release --locked -p postbote-server --target aarch64-apple-darwin
+            cargo build --release --locked -p postbote-server --target x86_64-apple-darwin
+            mkdir -p target/universal/release
+            lipo -create -output target/universal/release/postbote \
+              target/aarch64-apple-darwin/release/postbote target/x86_64-apple-darwin/release/postbote
+          else
+            cargo build --release --locked -p postbote-server --target ${{ matrix.target }}
+          fi
+      - name: Package and upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dir="postbote-${GITHUB_REF_NAME}-${{ matrix.name }}"
+          mkdir "$dir"
+          cp README.md "$dir/"
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp target/${{ matrix.target }}/release/postbote.exe "$dir/"
+            7z a "$dir.zip" "$dir" > /dev/null
+            gh release upload "$GITHUB_REF_NAME" "$dir.zip" --clobber
+          else
+            cp target/${{ matrix.target }}/release/postbote "$dir/"
+            tar czf "$dir.tar.gz" "$dir"
+            gh release upload "$GITHUB_REF_NAME" "$dir.tar.gz" --clobber
+          fi
+      - name: Keep Linux binary for the Docker image
+        if: matrix.docker-arch
+        run: |
+          mkdir -p docker-bin
+          cp target/${{ matrix.target }}/release/postbote docker-bin/postbote-linux-${{ matrix.docker-arch }}
+      - if: matrix.docker-arch
+        uses: actions/upload-artifact@v4
+        with:
+          name: postbote-linux-${{ matrix.docker-arch }}
+          path: docker-bin/
+
+  docker:
+    needs: cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: postbote-linux-*
+          path: docker-bin
+          merge-multiple: true
+      - run: chmod +x docker-bin/*
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/postbote
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

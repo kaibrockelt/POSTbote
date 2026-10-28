@@ -140,6 +140,24 @@ Security model:
 - **Team server:** bcrypt-hashed users or an auth proxy, signed session cookies, per-user storage,
   optional SSRF protection, run/memory/concurrency limits.
 
+## Releases
+
+Pushing a version tag builds everything on GitHub Actions and creates a **draft release**:
+
+```bash
+scripts/bump-version.sh 0.2.0
+git commit -am "Release 0.2.0" && git tag -a v0.2.0 -m v0.2.0 && git push --follow-tags
+```
+
+- Desktop app: macOS `.dmg` (universal), Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb`/`.rpm`
+- `postbote` CLI/server binaries for macOS, Windows and Linux (static, x86_64 + arm64)
+- Docker image `ghcr.io/kaibrockelt/postbote` (amd64 + arm64)
+
+Builds are unsigned by default (macOS ad-hoc signed). For notarized macOS builds add the Apple
+secrets listed in [`.github/workflows/release.yml`](.github/workflows/release.yml) and set the
+repository variable `MACOS_SIGNING=true`. Icons are generated from `desktop/icons/src/glyph.svg`
+with `npm run icons` in `web/`.
+
 ## Development
 
 ```bash
