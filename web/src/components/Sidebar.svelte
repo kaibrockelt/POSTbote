@@ -1,5 +1,6 @@
 <script>
   import FolderPlusIcon from './FolderPlusIcon.svelte';
+  import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
   import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
@@ -38,21 +39,19 @@
 </script>
 
 <aside class="sidebar">
-  <div class="ws-row">
-    <select class="ws-select" value={app.ws?.id} onchange={switchWs}>
+  <div class="ws-box">
+    <select class="ws-select" value={app.ws?.id} onchange={switchWs} title="Collection">
       {#each app.workspaces as w (w.id)}
         <option value={w.id}>{w.name || '(unnamed)'}{w.managed ? '' : ` · ${storageLabel[w.storage]}`}{w.error ? ' ⚠' : ''}</option>
       {/each}
     </select>
-    <button class="icon" title="New / open / import collection" onclick={onNewWorkspace}>＋</button>
-  </div>
-  <div class="ws-tools">
-    <button class="link" onclick={() => select({ kind: 'collection', path: 'postbote.yaml' })}>⚙ Settings</button>
+    <button class="icon" title="Collection settings" aria-label="Collection settings" onclick={() => select({ kind: 'collection', path: 'postbote.yaml' })}><Icon name="gear" /></button>
     {#if app.ws.storage !== 'browser'}
-      <button class="link" onclick={() => reload().then(() => toast('Reloaded')).catch(fail)} title="Re-read files, e.g. after git pull">⟳ Reload</button>
+      <button class="icon" title="Reload from disk, e.g. after git pull (⌘/Ctrl+R)" aria-label="Reload" onclick={() => reload().then(() => toast('Reloaded')).catch(fail)}><Icon name="reload" /></button>
     {/if}
-    <button class="link" onclick={() => (app.exporting = true)}>⇩ Export</button>
-    {#if !app.ws.managed}<button class="link danger" onclick={removeWs}>✕ Remove</button>{/if}
+    <button class="icon" title="Export as zip" aria-label="Export" onclick={() => (app.exporting = true)}><Icon name="export" /></button>
+    {#if !app.ws.managed}<button class="icon danger" title="Remove from list" aria-label="Remove" onclick={removeWs}><Icon name="remove" /></button>{/if}
+    <button class="icon" title="New / open / import collection" aria-label="New collection" onclick={onNewWorkspace}>＋</button>
   </div>
 
   <div class="scroll">
@@ -137,23 +136,29 @@
     background: var(--bg-1);
     min-height: 0;
   }
-  .ws-row {
+  .ws-box {
     display: flex;
-    gap: 4px;
-    padding: 10px 10px 4px;
+    align-items: center;
+    gap: 2px;
+    margin: 8px 8px 4px;
+    padding: 5px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-2);
   }
   .ws-select {
     flex: 1;
     min-width: 0;
+    margin-right: 2px;
     font-weight: 600;
   }
-  .ws-tools {
-    display: flex;
-    gap: 10px;
-    padding: 0 12px 8px;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-    font-size: 12px;
+  .ws-box .icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ws-box .danger:hover {
+    color: var(--bad);
   }
   .scroll {
     overflow: auto;

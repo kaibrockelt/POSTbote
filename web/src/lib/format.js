@@ -317,6 +317,27 @@ export function updateEnv(text, rows) {
   return out.join('\n') + '\n';
 }
 
+// Window tint of an environment: a comment line `# @tint #rrggbb` in its
+// file, so other tools and the dotenv parser ignore it.
+const TINT_LINE = /^#\s*@tint\s+(\S+)\s*$/;
+export const isTint = (c) => /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(c || '');
+
+export function getEnvTint(text) {
+  for (const line of (text || '').split('\n')) {
+    const m = line.trim().match(TINT_LINE);
+    if (m) return isTint(m[1]) ? m[1].toLowerCase() : '';
+  }
+  return '';
+}
+
+/** Sets (or with '' removes) the tint line; it goes to the top of the file. */
+export function setEnvTint(text, color) {
+  const lines = (text || '').split('\n').filter((l) => !TINT_LINE.test(l.trim()));
+  if (color) lines.unshift(`# @tint ${color.toLowerCase()}`);
+  const out = lines.join('\n');
+  return out.trim() ? out.replace(/\n*$/, '\n') : '';
+}
+
 // An environment is a name with up to two files: shared values in
 // <name>.env.pub (committed) and private overrides in <name>.env (gitignored).
 export const envName = (path) => path.split('/').pop().replace(/\.env(\.pub)?$/, '');

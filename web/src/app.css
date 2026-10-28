@@ -1,12 +1,12 @@
 :root {
-  --bg: #ffffff;
-  --bg-1: #f7f8fa;
-  --bg-2: #f0f2f5;
-  --bg-3: #e3e6eb;
+  --raw-bg: #ffffff;
+  --raw-bg-1: #f7f8fa;
+  --raw-bg-2: #f0f2f5;
+  --raw-bg-3: #e3e6eb;
   --fg: #1d2129;
   --fg-2: #4e5663;
   --fg-3: #8a929e;
-  --border: #e1e4e9;
+  --raw-border: #e1e4e9;
   --accent: #2f6fed;
   --accent-fg: #ffffff;
   --ok: #18874b;
@@ -44,14 +44,14 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15171c;
-    --bg-1: #1a1d23;
-    --bg-2: #22262e;
-    --bg-3: #2c313b;
+    --raw-bg: #15171c;
+    --raw-bg-1: #1a1d23;
+    --raw-bg-2: #22262e;
+    --raw-bg-3: #2c313b;
     --fg: #e4e7ec;
     --fg-2: #aab1bd;
     --fg-3: #737b88;
-    --border: #2c313a;
+    --raw-border: #2c313a;
     --accent: #5b8ff9;
     --ok: #4cc38a;
     --ok-bg: #173527;
@@ -84,6 +84,24 @@
     --v-built-bg: #2f2546;
     color-scheme: dark;
   }
+}
+
+/* Surfaces. An active environment with a tint (data-tint on <html>, colour in
+   --tint) mixes a little of that colour in: pastel tints stay subtle, loud
+   ones stay loud. */
+:root {
+  --bg: var(--raw-bg);
+  --bg-1: var(--raw-bg-1);
+  --bg-2: var(--raw-bg-2);
+  --bg-3: var(--raw-bg-3);
+  --border: var(--raw-border);
+}
+:root[data-tint] {
+  --bg: color-mix(in srgb, var(--tint) 6%, var(--raw-bg));
+  --bg-1: color-mix(in srgb, var(--tint) 15%, var(--raw-bg-1));
+  --bg-2: color-mix(in srgb, var(--tint) 15%, var(--raw-bg-2));
+  --bg-3: color-mix(in srgb, var(--tint) 17%, var(--raw-bg-3));
+  --border: color-mix(in srgb, var(--tint) 30%, var(--raw-border));
 }
 
 * {

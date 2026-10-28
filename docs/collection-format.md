@@ -106,6 +106,10 @@ writes to the private file, so values obtained at runtime (tokens) never end up 
 dotenv syntax: `KEY=value`, `# comments`, optional `export`, `"double quotes"` with `\n` escapes,
 `'single quotes'` literal. Comments and order are kept when POSTBote updates a file.
 
+Window tint: a comment line `# @tint #f38ba8` (hex `#rgb` or `#rrggbb`) tints the app window while the
+environment is active, e.g. red for production. It is set in the environment editor and stored in the
+shared file; a tint line in the private file overrides it for you alone.
+
 ## Variables
 
 `{{name}}` works in URL, params, headers, body, form fields and auth. Lookup order:

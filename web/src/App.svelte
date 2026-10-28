@@ -11,14 +11,15 @@
   import Login from './components/Login.svelte';
   import Setup from './components/Setup.svelte';
   import Settings from './components/Settings.svelte';
+  import Icon from './components/Icon.svelte';
   import FolderPicker from './components/FolderPicker.svelte';
   import TabBar from './components/TabBar.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
   import ExportDialog from './components/ExportDialog.svelte';
-  import { app, init, setEnv, reload, flush, flushSession, saveTab, fail } from './lib/state.svelte.js';
+  import { app, init, setEnv, reload, flush, flushSession, saveTab, closeTab, run, cancelRun, contentOf, fail, toast } from './lib/state.svelte.js';
   import { api } from './lib/api.js';
   import { buildTree } from './lib/tree.js';
-  import { listEnvs } from './lib/format.js';
+  import { listEnvs, getEnvTint, envPublicPath, envPrivatePath } from './lib/format.js';
 
   let showWsDialog = $state(false);
   let showSettings = $state(false);
@@ -32,6 +33,19 @@
   const envs = $derived(listEnvs(app.files));
   const sel = $derived(app.selected);
 
+  // tint the window while the active environment has one (private file wins)
+  const tint = $derived(app.ws && app.env ? getEnvTint(contentOf(envPrivatePath(app.env))) || getEnvTint(contentOf(envPublicPath(app.env))) : '');
+  $effect(() => {
+    const root = document.documentElement;
+    if (tint) {
+      root.dataset.tint = '';
+      root.style.setProperty('--tint', tint);
+    } else {
+      delete root.dataset.tint;
+      root.style.removeProperty('--tint');
+    }
+  });
+
   // pick up external edits (git pull, editor) when the window regains focus
   function onfocus() {
     if (app.ws && app.ws.storage !== 'browser' && !app.dialog) reload().catch(() => {});
@@ -44,10 +58,29 @@
       e.preventDefault();
     }
   }
+  // Cmd on macOS, Ctrl elsewhere (both accepted everywhere)
   function onkeydown(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-      e.preventDefault();
-      if (app.selected && !app.dialog) saveTab(app.selected).catch(fail);
+    if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || app.dialog) return;
+    const t = app.selected;
+    switch (e.key.toLowerCase()) {
+      case 's': // save the open tab
+        e.preventDefault();
+        if (t) saveTab(t).catch(fail);
+        break;
+      case 'w': // close the open tab (the desktop app keeps the window open)
+        e.preventDefault();
+        if (t) closeTab(t).catch(fail);
+        break;
+      case 'r': // re-read the collection from disk
+        e.preventDefault();
+        if (app.ws && app.ws.storage !== 'browser') reload().then(() => toast('Reloaded')).catch(fail);
+        break;
+      case 'enter': // run (or cancel) whatever the open tab can run
+        if (t?.kind !== 'request' && t?.kind !== 'workflow') break;
+        e.preventDefault();
+        if (app.running[t.path]) cancelRun(t.path);
+        else run(t.kind, t.path);
+        break;
     }
   }
   async function logout() {
@@ -89,12 +122,7 @@
         <span class="muted small">{app.info.user}</span>
         {#if app.info.auth === 'local'}<button class="link small" onclick={logout}>Sign out</button>{/if}
       {/if}
-      <button class="icon gear" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-        </svg>
-      </button>
+      <button class="icon gear" title="Settings" aria-label="Settings" onclick={() => (showSettings = true)}><Icon name="gear" size={16} /></button>
     </header>
 
     {#if app.ws}
@@ -183,6 +211,9 @@
     gap: 8px;
     font-weight: 700;
     letter-spacing: 0.02em;
+  }
+  :global(:root[data-tint]) .topbar {
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--tint) 80%, transparent);
   }
   .env-select {
     display: flex;

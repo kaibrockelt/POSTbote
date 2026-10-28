@@ -44,13 +44,6 @@
     else run('request', path);
   }
 
-  function onkeydown(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      send();
-    }
-  }
-
   // pasting a URL with a query string moves it into the params table
   function onpaste(e) {
     const text = e.clipboardData.getData('text');
@@ -72,7 +65,6 @@
   }
 </script>
 
-<svelte:window {onkeydown} />
 
 {#if showCode && d.doc}
   <CodeSnippets {path} doc={$state.snapshot(d.doc)} onclose={() => (showCode = false)} />

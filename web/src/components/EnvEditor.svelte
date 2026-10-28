@@ -3,7 +3,7 @@
   // private values (<name>.env, gitignored). Both are edited here as drafts.
   import KvTable from './KvTable.svelte';
   import { app, contentOf, setDraft, setEnv } from '../lib/state.svelte.js';
-  import { parseEnv, updateEnv, envPublicPath, envPrivatePath } from '../lib/format.js';
+  import { parseEnv, updateEnv, envPublicPath, envPrivatePath, getEnvTint, setEnvTint, isTint } from '../lib/format.js';
 
   let { path: name } = $props(); // env tabs are keyed by name
   const files = { pub: envPublicPath(name), priv: envPrivatePath(name) };
@@ -13,7 +13,7 @@
   const last = { pub: null, priv: null };
 
   const toRows = (text) => parseEnv(text).map((r) => ({ ...r, file: '', disabled: false }));
-  const sameVars = (a, b) => JSON.stringify(parseEnv(a)) === JSON.stringify(parseEnv(b));
+  const sameVars = (a, b) => JSON.stringify(parseEnv(a)) === JSON.stringify(parseEnv(b)) && getEnvTint(a) === getEnvTint(b);
 
   // follow file/draft changes (run results, revert, reload)
   $effect(() => {
@@ -58,6 +58,34 @@
   });
   const missing = $derived(effective.filter((e) => e.value === '').map((e) => e.key));
 
+  // window tint while this environment is active; stored in the shared file
+  const swatches = [
+    ['Red', '#f38ba8'],
+    ['Peach', '#fab387'],
+    ['Yellow', '#f9e2af'],
+    ['Green', '#a6e3a1'],
+    ['Teal', '#94e2d5'],
+    ['Blue', '#89b4fa'],
+    ['Mauve', '#cba6f7'],
+    ['Pink', '#f5c2e7'],
+  ];
+  const tint = $derived(getEnvTint(contentOf(files.pub)));
+  const custom = $derived(!!tint && !swatches.some(([, c]) => c === tint));
+  let hex = $state('');
+  $effect(() => {
+    hex = tint;
+  });
+  function setTint(c) {
+    const text = setEnvTint(contentOf(files.pub), c);
+    last.pub = text;
+    setDraft(files.pub, text);
+  }
+  function onhex(e) {
+    let v = e.currentTarget.value.trim();
+    if (v && !v.startsWith('#')) v = '#' + v;
+    if (v === '' || isTint(v)) setTint(v);
+  }
+
   function overridePrivately(key) {
     if (!rows.priv.some((r) => r.key === key)) rows.priv.push({ key, value: '', file: '', disabled: false });
   }
@@ -71,6 +99,16 @@
     {:else}
       <button class="small" onclick={() => setEnv(name)}>Activate</button>
     {/if}
+  </div>
+
+  <div class="tint row gap">
+    <span class="muted small">Window tint</span>
+    <button class="swatch none" class:on={!tint} title="Default (no tint)" aria-label="No tint" onclick={() => setTint('')}></button>
+    {#each swatches as [label, c] (c)}
+      <button class="swatch" class:on={tint === c} style="--c: {c}" title={label} aria-label="{label} tint" onclick={() => setTint(c)}></button>
+    {/each}
+    <input type="color" class="picker" class:on={custom} style={custom ? `background: ${tint}` : ''} value={tint || '#f38ba8'} title="Pick a color" oninput={(e) => setTint(e.currentTarget.value)} />
+    <input class="hex mono" placeholder="#rrggbb" bind:value={hex} onchange={onhex} spellcheck="false" aria-label="Tint as hex" />
   </div>
 
   <section>
@@ -123,6 +161,59 @@
 </div>
 
 <style>
+  .tint {
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .swatch {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--c);
+    cursor: pointer;
+  }
+  .swatch.none {
+    background: linear-gradient(135deg, transparent 45%, var(--fg-3) 45% 55%, transparent 55%), var(--bg);
+  }
+  .swatch.on {
+    outline: 2px solid var(--fg-2);
+    outline-offset: 1px;
+  }
+  /* custom colour: a rainbow swatch that opens the native picker */
+  .picker {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: conic-gradient(#f38ba8, #f9e2af, #a6e3a1, #94e2d5, #89b4fa, #cba6f7, #f38ba8);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+  .picker::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  .picker::-webkit-color-swatch {
+    border: none;
+    opacity: 0;
+  }
+  .picker::-moz-color-swatch {
+    border: none;
+    opacity: 0;
+  }
+  .picker.on {
+    outline: 2px solid var(--fg-2);
+    outline-offset: 1px;
+  }
+  .hex {
+    width: 84px;
+    padding: 2px 6px;
+    font-size: 12px;
+  }
   .env section {
     display: flex;
     flex-direction: column;
