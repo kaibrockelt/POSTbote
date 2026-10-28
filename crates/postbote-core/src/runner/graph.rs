@@ -106,6 +106,8 @@ struct Run<'a> {
     steps: Vec<StepResult>,
     count: usize,
     last: Option<Data>,
+    /// merge node → values received so far, by source node
+    merges: BTreeMap<String, BTreeMap<String, Value>>,
 }
 
 impl Engine {
@@ -136,9 +138,9 @@ impl Engine {
             return out;
         };
 
-        let mut run = Run { graph: &graph, path, depth, steps: Vec::new(), count: 0, last: None };
+        let mut run = Run { graph: &graph, path, depth, steps: Vec::new(), count: 0, last: None, merges: BTreeMap::new() };
         let first = input.map(Data::json).unwrap_or_else(Data::none);
-        match self.visit(&mut run, entry, first) {
+        match self.visit(&mut run, entry, first, None) {
             Ok(Some(ret)) => out.result = Some(ret.value),
             Ok(None) => out.result = run.last.map(|d| d.value),
             Err(e) => out.error = Some(e),
@@ -151,7 +153,7 @@ impl Engine {
 
     /// Runs a node and follows the edges of the port it emitted on.
     /// `Ok(Some)` = a Return node finished the workflow.
-    fn visit(&self, run: &mut Run, node: &GraphNode, input: Data) -> Result<Option<Data>, String> {
+    fn visit(&self, run: &mut Run, node: &GraphNode, input: Data, from: Option<&str>) -> Result<Option<Data>, String> {
         run.count += 1;
         if run.count > MAX_STEPS {
             return Err(format!("stopped after {MAX_STEPS} node executions (endless loop?)"));
@@ -161,9 +163,17 @@ impl Engine {
         }
         let started = Instant::now();
         let mut step = StepResult { node: node.id.clone(), kind: node.kind.clone(), name: node.name.clone(), ..Default::default() };
-        let emit = match check_input(node, input) {
-            Ok(data) => self.exec_node(run, node, data, &mut step),
-            Err(e) => Err(e),
+        let emit = if node.kind == "merge" {
+            // waits until every connected source delivered, then continues once
+            match merge_input(run, node, from, input) {
+                Some(d) => Ok(Emit::Port("out".into(), d)),
+                None => return Ok(None),
+            }
+        } else {
+            match check_input(node, input) {
+                Ok(data) => self.exec_node(run, node, data, &mut step),
+                Err(e) => Err(e),
+            }
         };
         step.duration_ms = started.elapsed().as_millis() as u64;
         let (port, data) = match emit {
@@ -199,7 +209,7 @@ impl Engine {
             }
         }
         for n in next {
-            if let Some(ret) = self.visit(run, n, data.clone())? {
+            if let Some(ret) = self.visit(run, n, data.clone(), Some(&node.id))? {
                 return Ok(Some(ret));
             }
         }
@@ -233,14 +243,9 @@ impl Engine {
                 self.set_call_input(&input, use_folder);
                 let res = self.exec_request(&req, None);
                 self.clear_call_input();
-                let error = res.error.clone().or_else(|| res.script_errors.first().cloned());
-                let body = res.response.as_ref().map(|r| r.body.clone());
+                let result = request_output(&res, cfg);
                 step.request = Some(res);
-                if let Some(e) = error {
-                    return Err(e);
-                }
-                let body = body.unwrap_or_default();
-                out(serde_json::from_str(&body).map(Data::json).unwrap_or_else(|_| Data::text(body)))
+                result.and_then(out)
             }
             "script" => self.js(node, "__runCompute()", &s("code"), &input).map(Data::json).and_then(out),
             "switch" => {
@@ -361,7 +366,8 @@ impl Engine {
                         let t = fs.read(&path).map_err(|e| format!("{e:#}"))?;
                         serde_json::from_str(&t).map(Data::json).map_err(|e| format!("{path}: invalid JSON: {e}")).and_then(out)
                     }
-                    "csv" => out(Data { kind: "csv", value: Value::String(fs.read(&path).map_err(|e| format!("{e:#}"))?) }),
+                    // like the CSV start payload: rows with a header become JSON objects
+                    "csv" => parse_csv(&fs.read(&path).map_err(|e| format!("{e:#}"))?, &json!({})).map(Data::json).and_then(out),
                     "file" => {
                         // text-safe for now; binary-safe with Fs::read_bytes (feature/binary-body)
                         let bytes = fs.read(&path).map_err(|e| format!("{e:#}"))?.into_bytes();
@@ -448,16 +454,17 @@ impl Engine {
                 res.duration_ms = started.elapsed().as_millis() as u64;
                 let n = batch_no * limit + i + 1;
                 let mut step = StepResult { node: child.id.clone(), kind: child.kind.clone(), name: format!("{} #{n}", label(child)), port: "out".into(), ..Default::default() };
-                let error = res.error.clone().or_else(|| res.script_errors.first().cloned());
-                let body = res.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+                let result = request_output(&res, &child.cfg);
                 step.duration_ms = res.duration_ms;
                 step.request = Some(res);
-                if let Some(e) = error {
-                    step.error = Some(e.clone());
-                    run.steps.push(step);
-                    return Err(format!("item {n}: {e}"));
-                }
-                let data = serde_json::from_str(&body).map(Data::json).unwrap_or_else(|_| Data::text(body));
+                let data = match result {
+                    Ok(d) => d,
+                    Err(e) => {
+                        step.error = Some(e.clone());
+                        run.steps.push(step);
+                        return Err(format!("item {n}: {e}"));
+                    }
+                };
                 step.output = data.preview();
                 run.steps.push(step);
                 results.push(data.value);
@@ -507,6 +514,63 @@ impl Engine {
         self.st.borrow_mut().graph_input = None;
         r
     }
+}
+
+/// Output of a request node: the body (or the whole response), or an error for
+/// HTTP status ≥ 400 and failed tests unless `failOnError` is off.
+fn request_output(res: &RequestResult, cfg: &serde_json::Map<String, Value>) -> Result<Data, String> {
+    if let Some(e) = res.error.clone().or_else(|| res.script_errors.first().cloned()) {
+        return Err(e);
+    }
+    let r = res.response.as_ref().ok_or("no response")?;
+    if cfg.get("failOnError").and_then(Value::as_bool).unwrap_or(true) {
+        if r.status >= 400 {
+            return Err(format!("HTTP {} {}", r.status, r.status_text).trim().to_string());
+        }
+        if let Some(t) = res.tests.iter().find(|t| !t.passed) {
+            return Err(format!("test failed: {}{}", t.name, t.error.as_ref().map(|e| format!(" — {e}")).unwrap_or_default()));
+        }
+    }
+    let body = serde_json::from_str(&r.body).unwrap_or_else(|_| Value::String(r.body.clone()));
+    if cfg.get("output").and_then(Value::as_str) == Some("response") {
+        let mut headers = serde_json::Map::new();
+        for (k, v) in &r.headers {
+            let k = k.to_ascii_lowercase();
+            let joined = match headers.get(&k).and_then(Value::as_str) {
+                Some(prev) => format!("{prev}, {v}"),
+                None => v.clone(),
+            };
+            headers.insert(k, Value::String(joined));
+        }
+        return Ok(Data::json(json!({ "status": r.status, "headers": headers, "body": body })));
+    }
+    Ok(match body {
+        Value::String(s) => Data::text(s),
+        v => Data::json(v),
+    })
+}
+
+/// Collects a merge node's inputs; returns the merged value once every
+/// connected source delivered (`mode`: object by source node id, or array).
+fn merge_input(run: &mut Run, node: &GraphNode, from: Option<&str>, input: Data) -> Option<Data> {
+    let mut sources: Vec<&str> = Vec::new();
+    for e in run.graph.edges.iter().filter(|e| e.to == node.id) {
+        if !sources.contains(&e.from.as_str()) {
+            sources.push(&e.from);
+        }
+    }
+    let got = run.merges.entry(node.id.clone()).or_default();
+    got.insert(from.unwrap_or("").to_string(), input.value);
+    if sources.iter().any(|s| !got.contains_key(*s)) {
+        return None;
+    }
+    let got = run.merges.remove(&node.id).unwrap_or_default();
+    let value = if node.cfg.get("mode").and_then(Value::as_str) == Some("array") {
+        Value::Array(sources.iter().map(|s| got.get(*s).cloned().unwrap_or(Value::Null)).collect())
+    } else {
+        Value::Object(sources.iter().map(|s| (s.to_string(), got.get(*s).cloned().unwrap_or(Value::Null))).collect())
+    };
+    Some(Data::json(value))
 }
 
 /// A JSON array, or the rows of CSV text.

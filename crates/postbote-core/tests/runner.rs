@@ -390,3 +390,43 @@ edges:
     let g = run(mk(), Target::Graph("workflows/fail.workflow.yaml".into(), None), opts()).graph.unwrap();
     assert!(g.error.as_deref().unwrap_or("").contains("assertion failed: n must be 2"), "{:?}", g.error);
 }
+
+#[test]
+fn workflow_request_errors_response_mode_merge_and_csv_files() {
+    let base = echo_server();
+    let flow = r#"nodes:
+  - { id: s, type: manual, payload: '{"id": 1}' }
+  - { id: notfound, type: request, request: requests/missing-page.req.yaml }
+  - { id: caught, type: script, code: "return input.message" }
+  - { id: lenient, type: request, request: requests/missing-page.req.yaml, failOnError: false, output: response }
+  - { id: status, type: script, code: "return input.status" }
+  - { id: rows, type: loadFile, path: data/users.csv, parse: csv }
+  - { id: count, type: script, code: "return input.length" }
+  - { id: join, type: merge }
+  - { id: r, type: return }
+edges:
+  - { from: s, out: out, to: notfound }
+  - { from: notfound, out: err, to: caught }
+  - { from: caught, out: out, to: join }
+  - { from: s, out: out, to: lenient }
+  - { from: lenient, out: out, to: status }
+  - { from: status, out: out, to: join }
+  - { from: s, out: out, to: rows }
+  - { from: rows, out: out, to: count }
+  - { from: count, out: out, to: join }
+  - { from: join, out: out, to: r }
+"#;
+    let fs = collection(
+        &base,
+        &[
+            ("requests/missing-page.req.yaml", "name: Missing\nurl: \"{{baseUrl}}/status/404\"\n"),
+            ("data/users.csv", "id,name\n1,ada\n2,grace\n"),
+            ("workflows/m.workflow.yaml", flow),
+        ],
+    );
+    let g = run(fs, Target::Graph("workflows/m.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.is_none(), "{:?} {:#?}", g.error, g.steps.iter().map(|s| (&s.node, &s.error)).collect::<Vec<_>>());
+    // one merged value after all three branches; 404 went to err by default
+    assert_eq!(g.result.unwrap(), serde_json::json!({ "caught": "HTTP 404 Not Found", "status": 404, "count": 2 }));
+    assert_eq!(g.steps.iter().filter(|s| s.kind == "merge").count(), 1);
+}

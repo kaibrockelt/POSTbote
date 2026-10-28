@@ -7,7 +7,7 @@
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseGraph, serializeGraph, GRAPH_EXT } from '../lib/format.js';
   import { allRequests } from '../lib/tree.js';
-  import { NODE_TYPES, outsOf, uniqueNodeId } from '../lib/graph.js';
+  import { NODE_TYPES, outsOf, uniqueNodeId, checkGraph } from '../lib/graph.js';
   import { app, run, cancelRun, select } from '../lib/state.svelte.js';
 
   let { path } = $props();
@@ -40,6 +40,8 @@
   // last step per node (forEach children appear once per item; the last one wins)
   const stepOf = $derived(Object.fromEntries((result?.steps || []).map((s) => [s.node, s])));
   const node = $derived(selected?.kind === 'node' ? d.doc?.nodes.find((n) => n.id === selected.id) : null);
+  // problems found before running (missing requests, unconnected nodes, …)
+  const issues = $derived(d.doc ? checkGraph($state.snapshot(d.doc), (p) => p in app.files) : { nodes: {}, general: [] });
 
   const byId = (id) => d.doc.nodes.find((n) => n.id === id);
   const curve = (a, b) => `M${a.x} ${a.y} C${a.x + 70} ${a.y}, ${b.x - 70} ${b.y}, ${b.x} ${b.y}`;
@@ -194,11 +196,14 @@
               class:sel={selected?.kind === 'node' && selected.id === n.id}
               class:ok={st && !st.error}
               class:failed={st?.error}
+              class:warn={issues.nodes[n.id] && !st}
+              title={issues.nodes[n.id]?.join('\n') || ''}
               data-id={n.id}
               style="left: {n.x}px; top: {n.y}px; width: {W}px; height: {nodeHeight(n)}px"
             >
               <div class="node-head" role="button" tabindex="-1" onpointerdown={(e) => startMove(e, n)}>
                 {#if !t?.starter}<span class="port in" title="input{n.input ? ` (${n.input})` : ''}"></span>{/if}
+                {#if issues.nodes[n.id]}<span class="warn-mark" title={issues.nodes[n.id].join('\n')}>!</span>{/if}
                 <span class="node-title">{n.name || t?.label || n.type}</span>
                 <span class="node-type">{t?.label || n.type}</span>
               </div>
@@ -217,6 +222,11 @@
         {#if node}
           {@const t = NODE_TYPES[node.type]}
           <div class="row between"><b>{t?.label || node.type}</b><span class="muted small mono">{node.id}</span></div>
+          {#if issues.nodes[node.id]}
+            <ul class="issues">
+              {#each issues.nodes[node.id] as m (m)}<li>{m}</li>{/each}
+            </ul>
+          {/if}
           <label><span>Name</span><input bind:value={node.name} /></label>
           {#if t?.inputs.length}
             <label>
@@ -241,6 +251,14 @@
               </select>
             </label>
             <label class="check"><input type="checkbox" bind:checked={node.useFolder} /> use folder settings (variables, headers, auth, scripts)</label>
+            <label class="check"><input type="checkbox" checked={node.failOnError !== false} onchange={(e) => (node.failOnError = e.currentTarget.checked)} /> HTTP status ≥ 400 or a failed test goes to err</label>
+            <label>
+              <span>Output</span>
+              <select value={node.output || 'body'} onchange={(e) => (node.output = e.currentTarget.value)}>
+                <option value="body">response body</option>
+                <option value="response">whole response {'{ status, headers, body }'}</option>
+              </select>
+            </label>
             <p class="hint">A JSON input overrides folder and collection variables of the same name (never environment values). <code>{'{{input.field}}'}</code> works anywhere in the request.</p>
             {#if node.request}<button class="link small" onclick={() => select({ kind: 'request', path: node.request })}>Open request ↗</button>{/if}
           {:else if node.type === 'script'}
@@ -312,6 +330,15 @@
               </select>
             </label>
             <p class="hint">Only workflows with a “From workflow” starter can be called; their Return value is the output.</p>
+          {:else if node.type === 'merge'}
+            <label>
+              <span>Output</span>
+              <select bind:value={node.mode}>
+                <option value="object">object keyed by input node id</option>
+                <option value="array">array in connection order</option>
+              </select>
+            </label>
+            <p class="hint">Waits until every connected node delivered a value, then continues once with all of them.</p>
           {:else if node.type === 'fromWorkflow'}
             <p class="hint">Starts this workflow when another workflow calls it; the caller's input is the output.</p>
           {:else if node.type === 'return'}
@@ -332,6 +359,7 @@
           <p>Connection selected.</p>
           <button class="small danger-outline" onclick={removeSelected}>Delete connection</button>
         {:else}
+          {#each issues.general as m (m)}<p class="warn-text">{m}</p>{/each}
           <p class="muted">Select a node to configure it.</p>
           {#if result}
             <div class="step">
@@ -457,6 +485,36 @@
   }
   .node.failed {
     border-color: var(--bad);
+  }
+  .node.warn {
+    border-color: var(--warn);
+    border-style: dashed;
+  }
+  .warn-mark {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--warn);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .issues {
+    margin: 0;
+    padding: 6px 8px 6px 22px;
+    background: var(--warn-bg);
+    color: var(--warn);
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .warn-text {
+    margin: 0;
+    color: var(--warn);
+    font-size: 12.5px;
   }
   .node-head {
     position: relative;
