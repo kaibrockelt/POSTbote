@@ -47,6 +47,10 @@ export function extractSecrets(doc, taken = new Map()) {
   for (const p of doc.params || []) {
     if (SECRET_PARAMS.test(p.key) && p.value && !hasVar(p.value)) p.value = use(camel(p.key), p.value, `query parameter ${p.key}`);
   }
+  // form and multipart fields such as client_secret or password
+  for (const f of doc.body?.fields || []) {
+    if (SECRET_PARAMS.test(f.key) && f.value && !hasVar(f.value)) f.value = use(camel(f.key), f.value, `form field ${f.key}`);
+  }
   return found;
 }
 

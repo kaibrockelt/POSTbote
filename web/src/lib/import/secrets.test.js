@@ -36,6 +36,13 @@ test('secrets become variables', () => {
   );
 });
 
+test('secret form fields', () => {
+  const doc = { headers: [], params: [], body: { type: 'form', fields: [{ key: 'client_id', value: 'abc' }, { key: 'client_secret', value: 'ssh' }] } };
+  assert.deepEqual(extractSecrets(doc).map((f) => [f.key, f.value]), [['clientSecret', 'ssh']]);
+  assert.equal(doc.body.fields[0].value, 'abc');
+  assert.equal(doc.body.fields[1].value, '{{clientSecret}}');
+});
+
 test('existing variable names are reused, filled or avoided', () => {
   const doc = { auth: { type: 'bearer', token: 'new' }, headers: [], params: [] };
   extractSecrets(doc, new Map([['token', 'old']]));
