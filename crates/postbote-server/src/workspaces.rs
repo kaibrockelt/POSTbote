@@ -99,6 +99,39 @@ pub fn set_collections_dir(raw: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Window state of the local app (open tabs, unsaved drafts, environment),
+/// one JSON file per collection in `<config dir>/postbote/sessions/`.
+fn session_file(id: &str) -> Result<PathBuf> {
+    if !valid_id(id) {
+        bail!("invalid workspace id");
+    }
+    let dir = config_file()?.with_file_name("sessions");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join(format!("{id}.json")))
+}
+
+pub fn load_session(id: &str) -> Result<Option<serde_json::Value>> {
+    match std::fs::read_to_string(session_file(id)?) {
+        Ok(s) => Ok(serde_json::from_str(&s).ok()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub fn save_session(id: &str, session: &serde_json::Value) -> Result<()> {
+    let path = session_file(id)?;
+    // write atomically, the file is rewritten often
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(session)?)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+    }
+    std::fs::rename(&tmp, &path)?;
+    Ok(())
+}
+
 fn path_id(p: &Path) -> String {
     hex::encode(&sha2::Sha256::digest(p.to_string_lossy().as_bytes())[..6])
 }

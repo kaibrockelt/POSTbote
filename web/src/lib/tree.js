@@ -9,9 +9,9 @@ function meta(text, fallback) {
   if (!m) {
     try {
       const d = YAML.parse(text) || {};
-      m = { name: d.name ? String(d.name) : '', method: String(d.method || 'GET').toUpperCase(), seq: Number(d.seq) || 0 };
+      m = { name: d.name ? String(d.name) : '', method: String(d.method || 'GET').toUpperCase(), url: String(d.url || ''), seq: Number(d.seq) || 0 };
     } catch {
-      m = { name: '', method: '?', seq: 0, broken: true };
+      m = { name: '', method: '?', url: '', seq: 0, broken: true };
     }
     if (metaCache.size > 5000) metaCache.clear();
     metaCache.set(text, m);
@@ -76,4 +76,37 @@ export function allRequests(files) {
     .filter((p) => p.startsWith('requests/') && p.endsWith(REQ_EXT))
     .sort()
     .map((path) => ({ path, ...meta(files[path], basename(path).slice(0, -REQ_EXT.length)) }));
+}
+
+/** Request folders as [{ path, label }] for "move to" menus, top level first. */
+export function folderList(root) {
+  const out = [{ path: root.path, label: '/ (top level)' }];
+  const walk = (f, prefix) => {
+    for (const c of f.folders) {
+      const label = `${prefix}${c.label || c.name}`;
+      out.push({ path: c.path, label });
+      walk(c, label + ' / ');
+    }
+  };
+  walk(root, '');
+  return out;
+}
+
+/**
+ * Filters the request tree. Every word of the query has to match the
+ * request's method, name, URL or folder names (not the file path).
+ */
+export function filterTree(root, query) {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return root;
+  const walk = (f, folderText) => {
+    const text = f === root ? '' : `${folderText} ${f.label || f.name}`.toLowerCase();
+    const requests = f.requests.filter((r) => {
+      const hay = `${r.method} ${r.name} ${r.url} ${text}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+    const folders = f.folders.map((c) => walk(c, text)).filter((c) => c.folders.length || c.requests.length);
+    return { ...f, folders, requests };
+  };
+  return walk(root, '');
 }

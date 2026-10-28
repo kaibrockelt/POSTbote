@@ -498,3 +498,17 @@ table.grid td:first-child {
   background: var(--bad);
   color: white;
 }
+
+.unsaved {
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.drop-target {
+  background: color-mix(in srgb, var(--accent) 16%, transparent) !important;
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+.dragging {
+  opacity: 0.45;
+}

@@ -13,6 +13,8 @@ fn main() {
                 .title("POSTBote")
                 .inner_size(1400.0, 900.0)
                 .min_inner_size(900.0, 600.0)
+                // let the web UI handle drag & drop (moving requests in the sidebar)
+                .disable_drag_drop_handler()
                 .build()?;
             Ok(())
         })

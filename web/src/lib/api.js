@@ -47,6 +47,8 @@ export const api = {
   run: (body, signal) => call('POST', '/api/run', body, { signal }),
   exportZip: (name, files) => call('POST', '/api/export', { name, files }, { blob: true }),
   importZip: (blob) => call('POST', '/api/import', blob),
+  getSession: (id) => call('GET', `/api/session/${id}`),
+  putSession: (id, session) => call('PUT', `/api/session/${id}`, session),
   setup: (collectionsDir) => call('POST', '/api/setup', { collectionsDir }),
   browse: (path) => call('GET', '/api/browse' + (path ? `?path=${encodeURIComponent(path)}` : '')),
 };

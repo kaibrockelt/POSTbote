@@ -312,6 +312,51 @@ impl<F: Fs> Fs for Tracking<F> {
     }
 }
 
+// ---------------------------------------------------------------- overlay
+
+/// Unsaved editor content on top of a collection: reads prefer the overlay,
+/// writes go to the underlying collection (and drop the overlay entry).
+pub struct Overlay<F: Fs> {
+    pub inner: F,
+    over: BTreeMap<String, String>,
+}
+
+impl<F: Fs> Overlay<F> {
+    pub fn new(inner: F, over: BTreeMap<String, String>) -> Result<Self> {
+        let mut clean_over = BTreeMap::new();
+        for (k, v) in over {
+            clean_over.insert(clean(&k)?, v);
+        }
+        Ok(Self { inner, over: clean_over })
+    }
+}
+
+impl<F: Fs> Fs for Overlay<F> {
+    fn read(&self, p: &str) -> Result<String> {
+        match self.over.get(&clean(p)?) {
+            Some(v) => Ok(v.clone()),
+            None => self.inner.read(p),
+        }
+    }
+    fn write(&mut self, p: &str, content: &str) -> Result<()> {
+        self.over.remove(&clean(p)?);
+        self.inner.write(p, content)
+    }
+    fn delete(&mut self, p: &str) -> Result<()> {
+        self.over.remove(&clean(p)?);
+        self.inner.delete(p)
+    }
+    fn rename(&mut self, from: &str, to: &str) -> Result<()> {
+        self.over.remove(&clean(from)?);
+        self.inner.rename(from, to)
+    }
+    fn list(&self) -> Result<BTreeMap<String, String>> {
+        let mut all = self.inner.list()?;
+        all.extend(self.over.clone());
+        Ok(all)
+    }
+}
+
 /// Sorted paths below `dir` ("" = everything).
 pub fn list_dir(fs: &dyn Fs, dir: &str) -> Result<Vec<String>> {
     let prefix = if dir.is_empty() || dir == "." { String::new() } else { format!("{}/", clean(dir)?) };
@@ -341,6 +386,19 @@ mod tests {
         fs.delete("requests/a/b.req.yaml").unwrap();
         assert!(!dir.path().join("requests").exists());
         assert!(is_not_found(&fs.read("nope").unwrap_err()));
+    }
+
+    #[test]
+    fn overlay_prefers_unsaved_content() {
+        let mut base = BTreeMap::new();
+        base.insert("a.txt".to_string(), "saved".to_string());
+        let mut over = BTreeMap::new();
+        over.insert("a.txt".to_string(), "draft".to_string());
+        let mut fs = Overlay::new(MemFs::new(base).unwrap(), over).unwrap();
+        assert_eq!(fs.read("a.txt").unwrap(), "draft");
+        fs.write("a.txt", "written").unwrap();
+        assert_eq!(fs.read("a.txt").unwrap(), "written");
+        assert_eq!(fs.inner.read("a.txt").unwrap(), "written");
     }
 
     #[cfg(unix)]

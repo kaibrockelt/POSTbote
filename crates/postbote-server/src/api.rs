@@ -13,7 +13,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use postbote_core::fs::{Fs, MemFs};
+use postbote_core::fs::{Fs, MemFs, Overlay};
 use postbote_core::runner::{self, RunOptions, RunOutput, Target};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -62,6 +62,7 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/api/import", post(import_zip))
         .route("/api/browse", get(browse))
         .route("/api/setup", post(setup))
+        .route("/api/session/{id}", get(get_session).put(put_session))
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -139,6 +140,22 @@ fn local_setup(s: &AppState) -> Value {
         "collectionsDir": cfg.collections_dir.map(|p| p.display().to_string()),
         "defaultCollectionsDir": workspaces::default_collections_dir().display().to_string(),
     })
+}
+
+async fn get_session(State(s): State<Arc<AppState>>, _u: User, Path(id): Path<String>) -> ApiResult<Json<Value>> {
+    if !s.is_local() {
+        return Err(err(StatusCode::NOT_FOUND, "sessions are stored in the browser in server mode"));
+    }
+    let session = blocking(move || workspaces::load_session(&id)).await?;
+    Ok(Json(json!({ "session": session })))
+}
+
+async fn put_session(State(s): State<Arc<AppState>>, _u: User, Path(id): Path<String>, Json(v): Json<Value>) -> ApiResult<Json<Value>> {
+    if !s.is_local() {
+        return Err(err(StatusCode::NOT_FOUND, "sessions are stored in the browser in server mode"));
+    }
+    blocking(move || workspaces::save_session(&id, &v)).await?;
+    Ok(Json(json!({})))
 }
 
 #[derive(Deserialize)]
@@ -246,6 +263,9 @@ struct RunReq {
     workspace: Option<String>,
     /// …the files of a browser-stored collection (processed in memory only)
     files: Option<BTreeMap<String, String>>,
+    /// unsaved editor content that should be used instead of the saved files
+    #[serde(default)]
+    overrides: BTreeMap<String, String>,
     kind: String,
     path: String,
     env: Option<String>,
@@ -280,6 +300,7 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
         (None, Some(files)) => Box::new(MemFs::new(files)?),
         (None, None) => return Err(err(StatusCode::BAD_REQUEST, "workspace or files required")),
     };
+    let fs: Box<dyn Fs> = if r.overrides.is_empty() { fs } else { Box::new(Overlay::new(fs, r.overrides)?) };
     // a disconnected client cancels the run
     let cancel = Arc::new(AtomicBool::new(false));
     let _guard = CancelOnDrop(cancel.clone());

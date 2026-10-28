@@ -1,7 +1,8 @@
 <script>
   import TreeFolder from './TreeFolder.svelte';
-  import { app, select, openWorkspace, reload, exportWorkspace, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
-  import { buildTree } from '../lib/tree.js';
+  import { app, select, isDirty, openWorkspace, reload, exportWorkspace, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
+  import { buildTree, filterTree, folderList } from '../lib/tree.js';
+  import { dnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
   import { envName, isPublicEnv } from '../lib/format.js';
   import * as act from '../lib/actions.js';
 
@@ -10,14 +11,10 @@
   let filter = $state('');
 
   const tree = $derived(buildTree(app.files));
-  const visibleTree = $derived(filter ? filterTree(tree.root, filter.toLowerCase()) : tree.root);
+  const filtering = $derived(filter.trim() !== '');
+  const visibleTree = $derived(filtering ? filterTree(tree.root, filter) : tree.root);
+  const folders = $derived(folderList(tree.root));
   const sel = (kind, path) => app.selected?.kind === kind && app.selected?.path === path;
-
-  function filterTree(f, q) {
-    const folders = f.folders.map((x) => filterTree(x, q)).filter((x) => x.folders.length || x.requests.length);
-    const requests = f.requests.filter((r) => r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q));
-    return { ...f, folders, requests };
-  }
 
   async function switchWs(e) {
     const ws = app.workspaces.find((w) => w.id === e.currentTarget.value);
@@ -58,7 +55,16 @@
   </div>
 
   <div class="scroll">
-    <div class="section">
+    <!-- dropping anywhere in this section (outside a folder) moves to the top level -->
+    <div
+      class="section"
+      class:drop-target={dnd.target === tree.root.path}
+      role="tree"
+      tabindex="-1"
+      ondragover={(e) => dragOver(e, tree.root.path)}
+      ondragleave={(e) => dragLeave(e, tree.root.path)}
+      ondrop={(e) => drop(e, tree.root.path)}
+    >
       <div class="section-head">
         <span>Requests</span>
         <span class="actions">
@@ -66,8 +72,9 @@
           <button class="icon" title="New folder" onclick={() => act.newFolder()}>⊞</button>
         </span>
       </div>
-      <input class="filter" placeholder="Filter…" bind:value={filter} />
-      <TreeFolder folder={visibleTree} bind:collapsed />
+      <input class="filter" placeholder="Filter: name, method, URL…" bind:value={filter} onkeydown={(e) => e.key === 'Escape' && (filter = '')} />
+      <TreeFolder folder={visibleTree} bind:collapsed {folders} forceOpen={filtering} />
+      {#if filtering && !visibleTree.requests.length && !visibleTree.folders.length}<p class="hint pad">No request matches “{filter}”.</p>{/if}
       {#if !tree.root.requests.length && !tree.root.folders.length}<p class="hint pad">No requests yet.</p>{/if}
     </div>
 
@@ -80,6 +87,7 @@
         <div class="item" class:selected={sel('workflow', w.path)}>
           <button class="label" onclick={() => select({ kind: 'workflow', path: w.path })}>
             ⇶ {w.name}
+            {#if isDirty(w.path)}<span class="unsaved" title="unsaved changes">●</span>{/if}
             {#if app.running[w.path]}<span class="spinner"></span>{/if}
           </button>
           <span class="actions">
@@ -100,6 +108,7 @@
           <button class="label" onclick={() => select({ kind: 'env', path: e })}>
             <span class="dot" class:active={app.env === e}></span>
             {envName(e)}
+            {#if isDirty(e)}<span class="unsaved" title="unsaved changes">●</span>{/if}
             <span class="tag" title={isPublicEnv(e) ? 'committed to git' : 'gitignored'}>{isPublicEnv(e) ? 'pub' : 'private'}</span>
           </button>
           <span class="actions">

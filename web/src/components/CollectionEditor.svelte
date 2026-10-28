@@ -15,18 +15,6 @@
   setContext('vars', () => scope);
   let tab = $state('general');
 
-  // keep the managed .gitignore block in sync when commitEnvironments is toggled
-  let prevCommit;
-  $effect(() => {
-    const commit = d.doc?.settings.commitEnvironments;
-    if (commit === undefined) return;
-    if (prevCommit === undefined || prevCommit === commit) {
-      prevCommit = commit;
-      return;
-    }
-    prevCommit = commit;
-    syncGitignore();
-  });
   const gitignoreOk = $derived(
     d.doc ? updateGitignore(app.files['.gitignore'] ?? '', d.doc.settings.commitEnvironments) === (app.files['.gitignore'] ?? '') : true,
   );

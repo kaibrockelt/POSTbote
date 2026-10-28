@@ -1,7 +1,7 @@
 <script>
   import KvTable from './KvTable.svelte';
   import FileEditor from './FileEditor.svelte';
-  import { app, write, renameFile, setEnv, fail } from '../lib/state.svelte.js';
+  import { app, contentOf, setDraft, renameFile, setEnv, fail } from '../lib/state.svelte.js';
   import { parseEnv, updateEnv, envName, isPublicEnv } from '../lib/format.js';
 
   let { path } = $props();
@@ -11,7 +11,7 @@
   let last = null;
 
   $effect(() => {
-    const text = app.files[path] ?? '';
+    const text = contentOf(path);
     if (text === last) return;
     last = text;
     rows = parseEnv(text).map((r) => ({ ...r, file: '', disabled: false }));
@@ -24,7 +24,8 @@
     const same = JSON.stringify(parseEnv(text)) === JSON.stringify(parseEnv(last));
     if (!same) {
       last = text;
-      write(path, text);
+      const saved = app.files[path] ?? '';
+      setDraft(path, JSON.stringify(parseEnv(saved)) === JSON.stringify(parseEnv(text)) ? saved : text);
     }
   });
 

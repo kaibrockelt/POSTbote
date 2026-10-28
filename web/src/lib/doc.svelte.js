@@ -1,17 +1,17 @@
-import { app, write } from './state.svelte.js';
+import { app, contentOf, setDraft } from './state.svelte.js';
 
 /**
- * Binds an editable, parsed document to a collection file. Edits are written
- * back automatically; external changes (run results, reload) are re-parsed.
- * Opening a file never rewrites it, so formatting is only touched on edit.
- * Use inside a component that is keyed by `path`.
+ * Binds an editable, parsed document to a collection file. Edits go into the
+ * file's draft (saved explicitly); external changes (run results, reload,
+ * discard) are re-parsed. Opening a file never changes it, so formatting is
+ * only touched on edit. Use inside a component that is keyed by `path`.
  */
 export function fileDoc(path, parse, serialize) {
   const s = $state({ doc: null, error: null });
   let last = null;
   let skip = false;
   $effect(() => {
-    const text = app.files[path] ?? '';
+    const text = contentOf(path);
     if (text === last) return;
     last = text;
     const r = parse(text);
@@ -29,7 +29,10 @@ export function fileDoc(path, parse, serialize) {
     const text = serialize(snap);
     if (text !== last) {
       last = text;
-      write(path, text);
+      // edited back to the saved state (modulo formatting) -> no longer dirty
+      const saved = app.files[path] ?? '';
+      const savedDoc = parse(saved).doc;
+      setDraft(path, savedDoc && serialize(savedDoc) === text ? saved : text);
     }
   });
   return s;

@@ -16,7 +16,7 @@ import {
   parseYaml,
   isPublicEnv,
 } from './format.js';
-import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail } from './state.svelte.js';
+import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, contentOf, setDraft } from './state.svelte.js';
 
 const guard =
   (fn) =>
@@ -82,6 +82,10 @@ export const renameRequest = guard(async (path) => {
   if (!name || name === doc.name) return;
   doc.name = name;
   write(path, serializeRequest(doc));
+  if (path in app.drafts) {
+    const draft = parseRequest(app.drafts[path]).doc;
+    if (draft) setDraft(path, serializeRequest({ ...draft, name }));
+  }
   const to = uniquePath({ ...app.files, [path]: undefined }, dirname(path), slug(name), REQ_EXT);
   if (to !== path && !(to in app.files)) {
     await renameFile(path, to);
@@ -90,7 +94,7 @@ export const renameRequest = guard(async (path) => {
 });
 
 export const duplicateRequest = guard(async (path) => {
-  const { doc } = parseRequest(app.files[path]);
+  const { doc } = parseRequest(contentOf(path));
   if (!doc) throw new Error('fix the YAML of this request first');
   doc.name = `${doc.name || 'request'} copy`;
   const to = uniquePath(app.files, dirname(path), slug(doc.name), REQ_EXT);
@@ -113,6 +117,11 @@ export const moveFolder = guard(async (dir) => {
   }
   if (target === dir) return;
   if (Object.keys(app.files).some((p) => p.startsWith(target + '/'))) throw new Error(`${target} already exists`);
+  await relocateFolder(dir, target);
+});
+
+// moves every file of a folder (and its tabs/drafts) to a new directory
+async function relocateFolder(dir, target) {
   const moves = new Map();
   for (const p of Object.keys(app.files).filter((p) => p.startsWith(dir + '/'))) {
     const to = target + p.slice(dir.length);
@@ -120,7 +129,22 @@ export const moveFolder = guard(async (dir) => {
     moves.set(p, to);
   }
   rewriteRefs(moves);
-  if (app.selected?.path === dir) select({ kind: 'folder', path: target });
+}
+
+/** Moves a request into another folder (keeps its file name if possible). */
+export const moveRequest = guard(async (path, dir) => {
+  if (dirname(path) === dir) return;
+  const to = uniquePath(app.files, dir, basename(path).slice(0, -REQ_EXT.length), REQ_EXT);
+  await renameFile(path, to);
+  rewriteRefs(new Map([[path, to]]));
+});
+
+/** Moves a folder into another folder; not into itself or its own subfolders. */
+export const moveFolderInto = guard(async (dir, parent) => {
+  if (dirname(dir) === parent || parent === dir || parent.startsWith(dir + '/')) return;
+  let target = `${parent}/${basename(dir)}`;
+  for (let i = 2; Object.keys(app.files).some((p) => p.startsWith(target + '/')); i++) target = `${parent}/${basename(dir)}-${i}`;
+  await relocateFolder(dir, target);
 });
 
 export const deleteFolder = guard(async (dir) => {

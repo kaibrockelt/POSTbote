@@ -1,23 +1,46 @@
-// Global app state. The collection is a map of path -> text; editors parse
-// the file they show and write it back. Persistence depends on where the
-// collection lives: the local disk / server (API) or the browser (IndexedDB).
+// Global app state. The collection is a map of path -> text (the saved
+// files). Editors work on drafts (unsaved text per path) that only reach the
+// files on save. Persistence of saved files depends on where the collection
+// lives: the local disk / server (API) or the browser (IndexedDB).
 import { api } from './api.js';
 import { browserDb } from './browserdb.js';
-import { MANIFEST, parseYaml, scaffold } from './format.js';
+import {
+  MANIFEST,
+  FOLDER_FILE,
+  REQ_EXT,
+  FLOW_EXT,
+  parseYaml,
+  scaffold,
+  parseRequest,
+  serializeRequest,
+  parseWorkflow,
+  serializeWorkflow,
+  parseCollection,
+  updateGitignore,
+  uniquePath,
+  slug,
+  dirname,
+  basename,
+  envName,
+  isPublicEnv,
+} from './format.js';
 
 export const app = $state({
   info: null,
   workspaces: [],
   ws: null, // { id, name, storage: 'disk' | 'server' | 'browser', path? }
   files: {},
+  drafts: {}, // path -> unsaved text
+  tabs: [], // [{ kind, path }]
   loading: false,
-  selected: null, // { kind: 'request' | 'folder' | 'workflow' | 'env' | 'collection' | 'file', path }
+  selected: null, // active tab: { kind: 'request' | 'folder' | 'workflow' | 'env' | 'collection' | 'file', path }
   env: '',
   results: {}, // path -> run output
   running: {}, // path -> AbortController
   toasts: [],
   dialog: null,
   picker: null, // folder picker fallback when no native dialog exists
+  menu: null, // context menu: { x, y, items: [{ label, action?, items?, danger?, disabled? }] }
   saving: 0,
 });
 
@@ -56,6 +79,12 @@ export function dialog(opts) {
 }
 export const ask = (title, value = '', opts = {}) => dialog({ type: 'prompt', title, value, ...opts });
 export const confirmAction = (title, message = '', okLabel = 'Delete') => dialog({ type: 'confirm', title, message, okLabel });
+
+export function openMenu(e, items) {
+  e.preventDefault();
+  e.stopPropagation();
+  app.menu = { x: e.clientX, y: e.clientY, items };
+}
 
 /** Native folder dialog in the desktop app, otherwise the built-in picker. */
 export async function pickFolder(start = '') {
@@ -131,6 +160,9 @@ export function write(path, text) {
 export async function removeFile(path) {
   delete app.files[path];
   delete app.results[path];
+  delete app.drafts[path];
+  for (const t of app.tabs.filter((t) => tabFile(t) === path)) dropTab(t);
+  persistUi();
   if (app.ws.storage === 'browser') return persistBrowser();
   clearTimeout(pending.get(path));
   pending.delete(path);
@@ -144,7 +176,18 @@ export async function renameFile(from, to) {
   delete app.files[from];
   if (app.results[from]) app.results[to] = app.results[from];
   delete app.results[from];
+  if (from in app.drafts) {
+    app.drafts[to] = app.drafts[from];
+    delete app.drafts[from];
+  }
+  // folders move with their files; tabs follow
+  for (const t of app.tabs) {
+    if (t.path === from) t.path = to;
+    else if (t.kind === 'folder' && from === `${t.path}/${FOLDER_FILE}`) t.path = dirname(to);
+  }
   if (app.selected?.path === from) app.selected = { ...app.selected, path: to };
+  else if (app.selected?.kind === 'folder' && from === `${app.selected.path}/${FOLDER_FILE}`) app.selected = { ...app.selected, path: dirname(to) };
+  persistUi();
   if (app.env === from) setEnv(to);
   if (app.ws.storage === 'browser') return persistBrowser();
   await flush();
@@ -197,13 +240,11 @@ export async function openWorkspace(ws) {
     let files;
     if (ws.storage === 'browser') files = (await browserDb.get(ws.id))?.files || {};
     else files = (await api.files(ws.id)).files;
+    flushSession();
     app.ws = { ...ws };
     app.files = files;
     app.results = {};
-    app.selected = local.get('sel.' + ws.id) ? JSON.parse(local.get('sel.' + ws.id)) : null;
-    if (app.selected && !(app.selected.path in files) && app.selected.kind !== 'folder') app.selected = null;
-    const env = local.get('env.' + ws.id) || '';
-    app.env = env in files ? env : '';
+    await restoreUi(ws.id, files);
     local.set('ws', ws.id);
   } finally {
     app.loading = false;
@@ -218,14 +259,241 @@ export async function reload() {
   app.files = files;
 }
 
+// ------------------------------------------------------------ drafts & tabs
+
+const tabKey = (t) => (t ? `${t.kind}:${t.path}` : '');
+export const sameTab = (a, b) => tabKey(a) === tabKey(b);
+
+/** The file a tab edits. */
+export function tabFile(t) {
+  if (t.kind === 'folder') return `${t.path}/${FOLDER_FILE}`;
+  if (t.kind === 'collection') return MANIFEST;
+  return t.path;
+}
+
+/** Current text of a file: the draft if there is one, else the saved file. */
+export function contentOf(path) {
+  return path in app.drafts ? app.drafts[path] : (app.files[path] ?? '');
+}
+
+export function setDraft(path, text) {
+  if (text === (app.files[path] ?? '')) delete app.drafts[path];
+  else app.drafts[path] = text;
+  persistUi();
+}
+
+/** Files saved together with a tab (a workflow also saves its data file). */
+export function tabFiles(t) {
+  const files = [tabFile(t)];
+  if (t.kind === 'workflow') {
+    const data = parseWorkflow(contentOf(t.path)).doc?.data;
+    if (data) files.push(data);
+  }
+  return files;
+}
+
+export const isDirty = (path) => path in app.drafts;
+export const tabDirty = (t) => tabFiles(t).some(isDirty);
+
+// ------------------------------------------------------------ session
+// Open tabs, unsaved drafts and the selected environment survive restarts.
+// Local app: a session file per collection (<config>/postbote/sessions/);
+// team server: this browser's localStorage.
+
+let uiTimer = null;
+let uiPending = null;
+
+function sessionSnapshot() {
+  return {
+    version: 1,
+    tabs: $state.snapshot(app.tabs),
+    selected: $state.snapshot(app.selected),
+    env: app.env || '',
+    drafts: $state.snapshot(app.drafts),
+  };
+}
+
+async function writeSession(id, session) {
+  if (app.info?.mode === 'local') await api.putSession(id, session);
+  else local.set('session.' + id, JSON.stringify(session));
+}
+
+function persistUi() {
+  const ws = app.ws;
+  if (!ws) return;
+  clearTimeout(uiTimer);
+  uiPending = ws.id;
+  uiTimer = setTimeout(flushSession, 250);
+}
+
+/** Writes the session right away (also used before the window closes). */
+export function flushSession() {
+  clearTimeout(uiTimer);
+  if (!uiPending || app.ws?.id !== uiPending) return;
+  const id = uiPending;
+  uiPending = null;
+  writeSession(id, sessionSnapshot()).catch((e) => console.warn('session not saved', e));
+}
+
+async function readSession(id) {
+  try {
+    if (app.info?.mode === 'local') return (await api.getSession(id)).session || {};
+    return JSON.parse(local.get('session.' + id) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** Restores tabs, drafts and environment; reports what no longer exists. */
+async function restoreUi(id, files) {
+  const s = await readSession(id);
+  const drafts = s.drafts && typeof s.drafts === 'object' ? s.drafts : {};
+  const missing = [];
+  const exists = (t) => t && (t.kind === 'collection' || (t.kind === 'folder' ? Object.keys(files).some((p) => p.startsWith(t.path + '/')) || tabFile(t) in drafts : t.path in files));
+  const tabs = [];
+  for (const t of Array.isArray(s.tabs) ? s.tabs : []) {
+    if (!t?.kind || !t?.path) continue;
+    if (exists(t)) tabs.push(t);
+    else if (tabFile(t) in drafts) {
+      tabs.push(t); // deleted meanwhile, but the unsaved version is kept
+      missing.push(`${t.path} (deleted – your unsaved version is still open)`);
+    } else missing.push(t.path);
+  }
+  // drafts of files that are gone and have no tab cannot be shown anymore
+  for (const p of Object.keys(drafts)) if (!(p in files) && !tabs.some((t) => tabFile(t) === p)) delete drafts[p];
+  app.drafts = drafts;
+  app.tabs = tabs;
+  app.selected = tabs.find((t) => sameTab(t, s.selected)) ?? tabs[0] ?? null;
+  app.env = '';
+  if (s.env) {
+    if (s.env in files) app.env = s.env;
+    else {
+      const i = missing.indexOf(s.env); // also open as a tab: report once
+      if (i >= 0) missing.splice(i, 1);
+      missing.push(`${s.env} (active environment – switched to “no environment”)`);
+    }
+  }
+  if (missing.length) {
+    dialog({
+      type: 'info',
+      title: 'Some items of your last session are gone',
+      message: 'These were open last time but no longer exist in the collection (moved, renamed or deleted outside POSTBote):',
+      items: missing,
+    });
+    persistUi();
+  }
+}
+
+/** Opens (or focuses) a tab. */
 export function select(sel) {
-  app.selected = sel;
-  if (app.ws) local.set('sel.' + app.ws.id, sel ? JSON.stringify(sel) : null);
+  if (sel && !app.tabs.some((t) => sameTab(t, sel))) {
+    const i = app.tabs.findIndex((t) => sameTab(t, app.selected));
+    app.tabs.splice(i + 1, 0, { kind: sel.kind, path: sel.path });
+  }
+  app.selected = sel ? { kind: sel.kind, path: sel.path } : null;
+  persistUi();
+}
+
+function dropTab(t) {
+  const i = app.tabs.findIndex((x) => sameTab(x, t));
+  if (i < 0) return;
+  app.tabs.splice(i, 1);
+  if (sameTab(app.selected, t)) app.selected = app.tabs[i] ?? app.tabs[i - 1] ?? null;
+}
+
+const canSaveAs = (t) => ['request', 'workflow', 'env', 'file'].includes(t.kind);
+
+/** Closes a tab, asking what to do with unsaved changes. Resolves false when cancelled. */
+export async function closeTab(t) {
+  if (tabDirty(t)) {
+    const choice = await dialog({ type: 'unsaved', title: `Save changes to “${tabTitle(t)}”?`, message: 'Your changes will be lost if you don’t save them.', canSaveAs: canSaveAs(t) });
+    if (!choice) return false;
+    if (choice === 'save') await saveTab(t);
+    else if (choice === 'saveas') {
+      if (!(await saveTabAs(t))) return false;
+      t = app.selected; // save-as replaced the tab
+    } else for (const f of tabFiles(t)) delete app.drafts[f];
+  }
+  dropTab(t);
+  persistUi();
+  return true;
+}
+
+export async function saveTab(t = app.selected) {
+  if (!t) return;
+  for (const f of tabFiles(t)) {
+    if (!isDirty(f)) continue;
+    const text = app.drafts[f];
+    const before = app.files[f];
+    delete app.drafts[f];
+    write(f, text);
+    if (f === MANIFEST) syncGitignore(before, text);
+  }
+  persistUi();
+}
+
+// toggling commitEnvironments rewrites bote's block in .gitignore on save
+function syncGitignore(before, after) {
+  const was = parseCollection(before || '').doc?.settings.commitEnvironments;
+  const now = parseCollection(after).doc?.settings.commitEnvironments;
+  if (now === undefined || was === now) return;
+  write('.gitignore', updateGitignore(app.files['.gitignore'] ?? '', now));
+}
+
+/** Saves the tab's content under a new name; the original file stays as it was. */
+export async function saveTabAs(t = app.selected) {
+  if (!t || !canSaveAs(t)) return false;
+  const text = contentOf(t.path);
+  let target;
+  if (t.kind === 'request' || t.kind === 'workflow') {
+    const isReq = t.kind === 'request';
+    const doc = (isReq ? parseRequest : parseWorkflow)(text).doc;
+    if (!doc) throw new Error('fix the YAML first');
+    const name = await ask('Save as', `${doc.name || 'copy'} copy`, { placeholder: 'Name' });
+    if (!name) return false;
+    doc.name = name;
+    target = uniquePath(app.files, dirname(t.path), slug(name), isReq ? REQ_EXT : FLOW_EXT);
+    write(target, (isReq ? serializeRequest : serializeWorkflow)(doc));
+  } else if (t.kind === 'env') {
+    const name = await ask('Save environment as', `${envName(t.path)}-copy`);
+    if (!name) return false;
+    target = uniquePath(app.files, 'environments', slug(name), isPublicEnv(t.path) ? '.env.pub' : '.env');
+    write(target, text);
+  } else {
+    const p = await ask('Save file as', t.path);
+    if (!p || p === t.path) return false;
+    if (p in app.files) throw new Error(`${p} already exists`);
+    target = p;
+    write(target, text);
+  }
+  delete app.drafts[t.path];
+  const i = app.tabs.findIndex((x) => sameTab(x, t));
+  const next = { kind: t.kind, path: target };
+  if (i >= 0) app.tabs[i] = next;
+  app.selected = next;
+  persistUi();
+  return true;
+}
+
+export function discardTab(t = app.selected) {
+  for (const f of tabFiles(t)) delete app.drafts[f];
+  persistUi();
+}
+
+/** Display name of a tab, derived from the (draft) content. */
+export function tabTitle(t) {
+  const text = contentOf(tabFile(t));
+  if (t.kind === 'collection') return 'Settings';
+  if (t.kind === 'env') return envName(t.path);
+  if (t.kind === 'file') return basename(t.path);
+  const name = parseYaml(text).doc?.name;
+  if (name) return String(name);
+  return basename(t.path).replace(/\.(req|flow)\.yaml$/, '');
 }
 
 export function setEnv(path) {
   app.env = path;
-  if (app.ws) local.set('env.' + app.ws.id, path || null);
+  persistUi();
 }
 
 /** storage: 'browser' | 'server' | 'disk'. Disk without path = new folder in the collections folder. */
@@ -286,7 +554,8 @@ export async function run(kind, path) {
   const ctrl = new AbortController();
   app.running[path] = ctrl;
   try {
-    const body = { kind, path, env: app.env || undefined };
+    // runs use what the editors show, including unsaved drafts
+    const body = { kind, path, env: app.env || undefined, overrides: $state.snapshot(app.drafts) };
     if (app.ws.storage === 'browser') body.files = $state.snapshot(app.files);
     else body.workspace = app.ws.id;
     const out = await api.run(body, ctrl.signal);

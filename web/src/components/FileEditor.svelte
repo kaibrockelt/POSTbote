@@ -1,13 +1,13 @@
 <script>
   import CodeArea from './CodeArea.svelte';
-  import { app, write } from '../lib/state.svelte.js';
+  import { contentOf, setDraft } from '../lib/state.svelte.js';
 
   let { path } = $props();
-  let text = $state(app.files[path] ?? '');
+  let text = $state(contentOf(path));
   let last = text;
   // follow external changes (run results, reload)
   $effect(() => {
-    const t = app.files[path] ?? '';
+    const t = contentOf(path);
     if (t !== last) {
       last = t;
       text = t;
@@ -16,7 +16,7 @@
   $effect(() => {
     if (text !== last) {
       last = text;
-      write(path, text);
+      setDraft(path, text);
     }
   });
 </script>

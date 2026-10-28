@@ -11,7 +11,9 @@
   import Login from './components/Login.svelte';
   import Setup from './components/Setup.svelte';
   import FolderPicker from './components/FolderPicker.svelte';
-  import { app, init, setEnv, reload, flush, fail } from './lib/state.svelte.js';
+  import TabBar from './components/TabBar.svelte';
+  import ContextMenu from './components/ContextMenu.svelte';
+  import { app, init, setEnv, reload, flush, flushSession, saveTab, fail } from './lib/state.svelte.js';
   import { api } from './lib/api.js';
   import { buildTree } from './lib/tree.js';
   import { envName, isPublicEnv } from './lib/format.js';
@@ -27,16 +29,23 @@
 
   const envs = $derived(buildTree(app.files).envs);
   const sel = $derived(app.selected);
-  const exists = $derived(sel && (sel.kind === 'folder' || sel.path in app.files || sel.kind === 'collection'));
 
   // pick up external edits (git pull, editor) when the window regains focus
   function onfocus() {
     if (app.ws && app.ws.storage !== 'browser' && !app.dialog) reload().catch(() => {});
   }
   function onbeforeunload(e) {
+    // unsaved drafts live in the session, so closing never loses them
+    flushSession();
     if (app.saving) {
       flush();
       e.preventDefault();
+    }
+  }
+  function onkeydown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      if (app.selected && !app.dialog) saveTab(app.selected).catch(fail);
     }
   }
   async function logout() {
@@ -45,7 +54,7 @@
   }
 </script>
 
-<svelte:window {onfocus} {onbeforeunload} />
+<svelte:window {onfocus} {onbeforeunload} {onkeydown} />
 
 {#if !ready}
   <div class="splash muted">Loading…</div>
@@ -85,10 +94,12 @@
 
     {#if app.ws}
       <Sidebar onNewWorkspace={() => (showWsDialog = true)} />
+      <div class="workarea">
+      <TabBar />
       <main class="main">
         {#if app.loading}
           <p class="muted">Loading…</p>
-        {:else if !sel || !exists}
+        {:else if !sel}
           <div class="welcome">
             <h2>{app.ws.name}</h2>
             <p class="muted">
@@ -109,6 +120,7 @@
           {/key}
         {/if}
       </main>
+      </div>
     {:else}
       <main class="main full">
         <div class="welcome">
@@ -136,6 +148,7 @@
   <FolderPicker start={app.picker.start} onpick={(p) => app.picker.resolve(p)} oncancel={() => app.picker.resolve(null)} />
 {/if}
 <Dialog />
+<ContextMenu />
 <div class="toasts">
   {#each app.toasts as t (t.id)}<div class="toast {t.kind}">{t.message}</div>{/each}
 </div>
@@ -172,10 +185,17 @@
   .saving {
     width: 60px;
   }
+  .workarea {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
   .main {
     overflow: auto;
     padding: 16px 20px;
     min-height: 0;
+    flex: 1;
   }
   .main.full {
     grid-column: 1 / -1;
