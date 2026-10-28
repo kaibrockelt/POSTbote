@@ -3,6 +3,8 @@ name = "postbote-server"
 description = "HTTP API and web UI of postbote (local app and team server)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 name = "postbote_server"

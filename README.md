@@ -167,3 +167,14 @@ cargo test                                  # core + server tests
 cargo run -p postbote-server -- serve --addr 127.0.0.1:8080 --auth none --data ./data
 cd web && npm run dev                       # UI with hot reload, proxies /api to :8080
 ```
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option. Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in POSTBote by you, as defined in the Apache-2.0 license, shall be dual licensed as
+above, without any additional terms or conditions.

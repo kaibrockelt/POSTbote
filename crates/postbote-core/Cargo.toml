@@ -3,6 +3,8 @@ name = "postbote-core"
 description = "Collection format, request runner and scripting engine of postbote"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true

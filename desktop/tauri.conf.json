@@ -17,6 +17,8 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "license": "MIT OR Apache-2.0",
+    "copyright": "© 2026 Kai Brockelt",
     "shortDescription": "Offline-first API client",
     "icon": [
       "icons/icon.png",

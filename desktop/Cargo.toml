@@ -3,6 +3,8 @@ name = "postbote-desktop"
 description = "POSTBote desktop app (native window via the system webview)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "postbote-desktop"
