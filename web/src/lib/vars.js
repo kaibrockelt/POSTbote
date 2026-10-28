@@ -105,10 +105,12 @@ export function tokenize(text, scope) {
 }
 
 /** Replaces known values; runtime/built-in/unknown names stay as {{name}}. */
-export function interpolate(text, scope) {
+// like the runner: configured values may reference other variables (a few levels deep)
+export function interpolate(text, scope, depth = 0) {
   return String(text ?? '').replace(VAR_RE, (m, n) => {
     const v = scope.get(n.trim());
-    return v && ['collection', 'folder', 'envpub', 'env'].includes(v.source) ? v.value : m;
+    if (!v || !['collection', 'folder', 'envpub', 'env'].includes(v.source)) return m;
+    return depth < 4 && v.value.includes('{{') ? interpolate(v.value, scope, depth + 1) : v.value;
   });
 }
 

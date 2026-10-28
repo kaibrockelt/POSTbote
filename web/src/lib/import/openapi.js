@@ -35,7 +35,7 @@ export function parseOpenApi(inputs) {
     spec.info?.description,
     spec.info?.version && `Version ${spec.info.version}`,
     spec.externalDocs?.url && `More: ${spec.externalDocs.url}`,
-    ctx.serverNotes?.length && `Server variables (adjust baseUrl in the environments):\n\n${ctx.serverNotes.join('\n')}`,
+    ctx.serverNotes?.length && `Server variables (set in the environments):\n\n${ctx.serverNotes.join('\n')}`,
   ];
   const security = convertSecurity(ctx);
 
@@ -139,12 +139,13 @@ function convertServers(ctx) {
     return { environments: [], baseUrl: 'http://localhost' };
   }
 
-  // {region} server variables get their default (variables inside variable
-  // values are not resolved when sending); the choices go to the README
+  // {region} server variables become {{region}} in the environment's baseUrl,
+  // with their default as value; the choices go to the README
   const urlOf = (s) => {
     const vars = Object.entries(s.variables || {}).map(([k, v]) => ({ key: k, value: scalar(v?.default ?? v?.enum?.[0]), choices: v?.enum || [] }));
+    const template = s.url.replace(/\{([^}]+)\}/g, (_, k) => `{{${k}}}`).replace(/\/+$/, '');
     const plain = s.url.replace(/\{([^}]+)\}/g, (_, k) => vars.find((v) => v.key === k)?.value ?? '').replace(/\/+$/, '');
-    return { plain, vars };
+    return { template, plain, vars };
   };
   ctx.serverNotes = servers
     .filter((s) => s.variables && Object.keys(s.variables).length)
@@ -159,7 +160,10 @@ function convertServers(ctx) {
     let envName = slug(s.description || host || `server-${i + 1}`);
     for (let n = 2; used.has(envName); n++) envName = `${slug(s.description || 'server')}-${n}`;
     used.add(envName);
-    return { name: envName, values: [{ key: 'baseUrl', value: u.plain, secret: false }] };
+    return {
+      name: envName,
+      values: [{ key: 'baseUrl', value: u.vars.length ? u.template : u.plain, secret: false }, ...u.vars.map((v) => ({ key: v.key, value: v.value, secret: false }))],
+    };
   });
   return { environments, baseUrl: first.plain };
 }

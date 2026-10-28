@@ -225,3 +225,37 @@ fn script_limits() {
     let r = run(mk(), Target::Request("requests/syntax.req.yaml".into()), opts()).request.unwrap();
     assert!(r.script_errors[0].contains("SyntaxError"), "{:?}", r.script_errors);
 }
+
+#[test]
+fn nested_variables_only_from_configuration() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
+            // collection baseUrl is overridden by an environment value that references other variables
+            ("environments/dev.env.pub", "token=\nregion=eu\nhost=api-{{region}}\napi=/v{{version}}\nversion=2\nloopA={{loopB}}\nloopB={{loopA}}\n"),
+            (
+                "requests/nested.req.yaml",
+                r#"name: Nested
+url: "{{baseUrl}}/echo{{api}}/{{host}}"
+headers:
+  - key: X-From
+    value: "{{fromResponse}}"
+  - key: X-Loop
+    value: "{{loopA}}"
+scripts:
+  pre: |
+    vars.set('fromResponse', '{{token}}');
+  post: |
+    const j = res.json();
+    test('configured values are resolved', () => expect(j.path).toBe('/echo/v2/api-eu'));
+    test('runtime values are not', () => expect(j.headers['x-from']).toBe('{{token}}'));
+    test('cycles stop', () => expect(j.headers['x-loop']).toMatch(/^\{\{loop[AB]\}\}$/));
+"#,
+            ),
+        ],
+    );
+    let r = run(fs, Target::Request("requests/nested.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
+}

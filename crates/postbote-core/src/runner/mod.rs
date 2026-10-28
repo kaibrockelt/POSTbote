@@ -273,20 +273,32 @@ impl State {
 
     /// Variable lookup: runtime vars > data row > environment > folder/collection vars.
     fn lookup(&self, name: &str) -> Option<String> {
+        self.lookup_src(name).map(|(v, _)| v)
+    }
+
+    /// The value and whether it comes from configuration (environment, folder,
+    /// collection). Only those may contain further `{{placeholders}}`: values
+    /// from responses or data rows are never re-interpolated, so an API cannot
+    /// make the runner insert e.g. `{{token}}` into a later request.
+    fn lookup_src(&self, name: &str) -> Option<(String, bool)> {
         if let Some(v) = self.vars.get(name) {
-            return Some(var_text(v));
+            return Some((var_text(v), false));
         }
         if let Some(Value::Object(row)) = &self.row {
             if let Some(v) = row.get(name) {
-                return Some(var_text(v));
+                return Some((var_text(v), false));
             }
         }
         if let Some(v) = self.env.get(name) {
-            return Some(v.clone());
+            return Some((v.clone(), true));
         }
         if let Some(v) = self.scope_vars.get(name) {
-            return Some(v.clone());
+            return Some((v.clone(), true));
         }
+        self.builtin(name).map(|v| (v, false))
+    }
+
+    fn builtin(&self, name: &str) -> Option<String> {
         match name {
             "$uuid" | "$guid" => Some(uuid()),
             "$timestamp" => Some(time::OffsetDateTime::now_utc().unix_timestamp().to_string()),
@@ -298,14 +310,24 @@ impl State {
     }
 
     /// Replaces `{{name}}` placeholders; unknown names are left untouched.
-    /// Values are not re-interpolated, which rules out recursion.
+    /// Configured values may reference other variables (e.g.
+    /// `baseUrl=https://{{region}}.api.test`), resolved up to a few levels deep.
     fn interp(&self, s: &str) -> String {
+        self.interp_depth(s, 0)
+    }
+
+    fn interp_depth(&self, s: &str, depth: usize) -> String {
         static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
         let re = RE.get_or_init(|| Regex::new(r"\{\{\s*([^{}]+?)\s*\}\}").unwrap());
         if !s.contains("{{") {
             return s.to_string();
         }
-        re.replace_all(s, |c: &regex::Captures| self.lookup(&c[1]).unwrap_or_else(|| c[0].to_string())).into_owned()
+        re.replace_all(s, |c: &regex::Captures| match self.lookup_src(&c[1]) {
+            Some((v, true)) if depth < 4 && v.contains("{{") => self.interp_depth(&v, depth + 1),
+            Some((v, _)) => v,
+            None => c[0].to_string(),
+        })
+        .into_owned()
     }
 }
 

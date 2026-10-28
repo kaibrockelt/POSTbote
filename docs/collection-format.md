@@ -125,6 +125,11 @@ shared file; a tint line in the private file overrides it for you alone.
 Dynamic values: `{{$uuid}}`, `{{$timestamp}}`, `{{$timestampMs}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`.
 Unknown names are left as-is; an unresolved variable in the URL is reported as an error.
 
+Values from the environment, folders and the collection may use other variables, e.g.
+`baseUrl=https://{{region}}.api.example.com` with `region=eu` (resolved up to four levels; cycles stay
+unresolved). Values set at runtime or taken from data rows are inserted literally, so a response can
+never make POSTBote insert a secret such as `{{token}}` into a later request.
+
 ## Script order
 
 For each request: collection pre → folder pre (outer → inner) → request pre → runner step pre,

@@ -169,7 +169,8 @@ test('OpenAPI 3.1: structure, servers, security', () => {
   assert.equal(r.collection.variables.find((v) => v.key === 'userId').value, '42');
   assert.deepEqual(r.environments.map((e) => e.name), ['production', 'staging']);
   assert.deepEqual(r.environments[0].values, [
-    { key: 'baseUrl', value: 'https://eu.shop.test/v2', secret: false },
+    { key: 'baseUrl', value: 'https://{{region}}.shop.test/v2', secret: false },
+    { key: 'region', value: 'eu', secret: false },
     { key: 'token', value: '', secret: true },
     { key: 'apiKey', value: '', secret: true }, // used by one operation
   ]);
