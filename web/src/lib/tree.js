@@ -41,7 +41,9 @@ export function buildTree(files) {
       const f = folder(dir);
       if (path.endsWith('/' + FOLDER_FILE)) {
         f.hasMeta = true;
-        f.label = meta(text, '').name;
+        const m = meta(text, '');
+        f.label = m.name;
+        f.seq = m.seq;
         continue;
       }
       if (path.endsWith(REQ_EXT)) {
@@ -59,7 +61,8 @@ export function buildTree(files) {
     other.push(path);
   }
   const sort = (f) => {
-    f.folders.sort((a, b) => (a.label || a.name).localeCompare(b.label || b.name));
+    // like requests: by seq (imports keep the source order), then by name
+    f.folders.sort((a, b) => (a.seq || 0) - (b.seq || 0) || (a.label || a.name).localeCompare(b.label || b.name, undefined, { numeric: true }));
     f.requests.sort(byOrder);
     f.folders.forEach(sort);
   };

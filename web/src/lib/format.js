@@ -162,6 +162,7 @@ export function parseFolder(text) {
       headers: normKv(doc.headers),
       auth: normAuth(doc.auth),
       scripts: normScripts(doc.scripts),
+      seq: doc.seq,
     },
   };
 }
@@ -173,6 +174,7 @@ export function serializeFolder(f) {
     headers: cleanKv(f.headers),
     auth: cleanAuth(f.auth),
     scripts: cleanScripts(f.scripts),
+    seq: f.seq,
   });
   return Object.keys(out).length ? dump(out) : '';
 }

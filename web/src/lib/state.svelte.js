@@ -113,9 +113,20 @@ export async function pickFolder(start = '') {
 
 /** Local app: where collections live (first-run wizard / app settings). */
 export async function setCollectionsDir(dir) {
+  if (app.ws) await flush();
   await api.setup(dir);
   app.info = await api.info();
   await loadWorkspaces();
+  // the open collection may not be part of the new folder: switch to one that is
+  if (app.ws && !app.workspaces.some((w) => w.id === app.ws.id)) {
+    flushSession();
+    app.ws = null;
+    app.files = {};
+    app.drafts = {};
+    app.tabs = [];
+    app.selected = null;
+    if (app.workspaces[0]) await openWorkspace(app.workspaces[0]);
+  }
 }
 
 export function fail(e) {
@@ -170,6 +181,7 @@ export function write(path, text) {
 /** Moves files or whole folders (collection-relative) to the system trash. */
 export async function trashPaths(paths) {
   await flush();
+  toast('Moving to the trash…'); // the system trash can take a few seconds
   await api.trashPaths(app.ws.id, paths);
   for (const p of Object.keys(app.files)) {
     if (paths.some((t) => p === t || p.startsWith(t + '/'))) forget(p);
@@ -594,7 +606,10 @@ export async function removeWorkspace(ws, mode = 'unlist') {
   // pending writes would recreate the folder
   if (app.ws?.id === ws.id && mode !== 'unlist') await flush();
   if (ws.storage === 'browser') await browserDb.remove(ws.id);
-  else if (mode === 'trash') await api.trashWorkspace(ws.id);
+  else if (mode === 'trash') {
+    toast('Moving to the trash…');
+    await api.trashWorkspace(ws.id);
+  }
   else if (mode === 'delete') await api.purgeWorkspace(ws.id);
   else await api.deleteWorkspace(ws.id);
   if (app.ws?.id === ws.id) {

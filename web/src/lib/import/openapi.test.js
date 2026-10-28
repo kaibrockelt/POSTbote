@@ -210,8 +210,10 @@ test('OpenAPI 3.1: operations', () => {
 
   const w = r.warnings.join('\n');
   assert.match(w, /common\.yaml#\/components\/parameters\/Page was not resolved/);
-  assert.match(w, /1 callback was not imported/);
-  assert.match(w, /1 webhook was not imported/);
+  assert.match(w, /2 callbacks\/webhooks are described in the README/);
+  assert.match(r.docs, /## Callbacks and webhooks/);
+  assert.match(r.docs, /Callback `done` of `POST \/orders`: POST to `\{\$request\.body#\/url\}`/);
+  assert.match(r.docs, /Webhook `newUser`: POST/);
   assert.match(w, /XML body has no example/);
 });
 

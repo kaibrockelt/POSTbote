@@ -85,8 +85,14 @@ export function buildCollectionFiles(result, { secretsEnv = '' } = {}) {
     '.gitignore': updateGitignore('', false),
   };
 
+  // folders keep the source order too (seq per parent folder)
+  const folderSeq = new Map();
   for (const f of r.folders) {
+    const parent = f.path.slice(0, f.path.lastIndexOf('/'));
+    const n = (folderSeq.get(parent) || 0) + 1;
+    folderSeq.set(parent, n);
     files[`${f.path}/${FOLDER_FILE}`] = serializeFolder({
+      seq: n,
       variables: [],
       headers: [],
       scripts: {},

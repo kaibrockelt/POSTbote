@@ -31,7 +31,8 @@ scripts:
 
 Optional. Same keys as the collection: `name`, `variables`, `headers`, `auth`, `scripts`. Applied to
 every request below the folder. An empty folder is kept alive by its `_folder.yaml` (git does not
-track empty directories).
+track empty directories). `seq` orders folders within their parent like it orders requests (imports set
+it to keep the source order); folders without `seq` are sorted by name.
 
 ## Requests: `requests/**/<name>.req.yaml`
 

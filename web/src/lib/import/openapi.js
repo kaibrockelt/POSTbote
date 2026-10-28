@@ -27,7 +27,7 @@ export function parseOpenApi(inputs) {
   const warnings = new Set();
   // other selected files can satisfy external $refs (./schemas/pet.yaml#/Pet)
   const docs = new Map(inputs.filter((i) => i.json && typeof i.json === 'object').map((i) => [i.name.split(/[\\/]/).pop(), i.json]));
-  const ctx = { spec, v2, warnings, docs, collectionVars: new Map(), skipped: { callbacks: 0, webhooks: 0 } };
+  const ctx = { spec, v2, warnings, docs, collectionVars: new Map(), skipped: { callbacks: 0, webhooks: 0 }, incoming: [] };
 
   const name = String(spec.info?.title || main.name.replace(/\.(json|ya?ml)$/i, '') || 'API');
   const { environments, baseUrl } = convertServers(ctx);
@@ -50,10 +50,18 @@ export function parseOpenApi(inputs) {
       const doc = convertOperation(ctx, path, method, pathItem, op, security);
       const tag = (op.tags || [])[0];
       requests.push({ dir: tag ? folders.dirOf(tag) : 'requests', doc, order: requests.length });
-      if (op.callbacks) ctx.skipped.callbacks += Object.keys(op.callbacks).length;
+      for (const [cbName, cb] of Object.entries(op.callbacks || {})) {
+        ctx.skipped.callbacks++;
+        for (const [expr, item] of Object.entries(deref(ctx, cb) || {})) {
+          ctx.incoming.push(`- Callback \`${cbName}\` of \`${method.toUpperCase()} ${path}\`: ${describeIncoming(ctx, item)} to \`${expr}\``);
+        }
+      }
     }
   }
-  if (spec.webhooks) ctx.skipped.webhooks += Object.keys(spec.webhooks).length;
+  for (const [hook, item] of Object.entries(spec.webhooks || {})) {
+    ctx.skipped.webhooks++;
+    ctx.incoming.push(`- Webhook \`${hook}\`: ${describeIncoming(ctx, item)}`);
+  }
 
   // declare the secrets of all used security schemes (also per operation) in
   // every environment; they need one to live in
@@ -65,8 +73,10 @@ export function parseOpenApi(inputs) {
   }
 
   const variables = [kv('baseUrl', baseUrl), ...[...ctx.collectionVars].map(([k, v]) => kv(k, v))];
-  if (ctx.skipped.callbacks) warnings.add(`${ctx.skipped.callbacks} callback${ctx.skipped.callbacks > 1 ? 's were' : ' was'} not imported (they describe requests the API sends to you)`);
-  if (ctx.skipped.webhooks) warnings.add(`${ctx.skipped.webhooks} webhook${ctx.skipped.webhooks > 1 ? 's were' : ' was'} not imported`);
+  // requests the API sends to you cannot be run from here: they are documented in the README
+  const n = ctx.skipped.callbacks + ctx.skipped.webhooks;
+  if (n) warnings.add(`${n} callback${n > 1 ? 's/webhooks are' : '/webhook is'} described in the README (requests the API sends to you)`);
+  if (ctx.incoming.length) docLines.push(`## Callbacks and webhooks\n\nRequests this API sends to you:\n\n${ctx.incoming.join('\n')}`);
   if (!requests.length) warnings.add('The document contains no operations');
 
   return {
@@ -196,6 +206,13 @@ function convertSecurity(ctx) {
   const auth = fromRequirements(spec.security);
   // secrets/plain are live sets: operations add the schemes they use
   return { auth: auth?.type === 'none' ? undefined : auth, secrets, plain, fromRequirements, global: auth };
+}
+
+/** "POST (summary)" for the operations of a callback/webhook path item. */
+function describeIncoming(ctx, item) {
+  const p = deref(ctx, item) || {};
+  const ops = Object.keys(p).filter((m) => METHODS.includes(m));
+  return ops.map((m) => `${m.toUpperCase()}${p[m]?.summary ? ` (${p[m].summary})` : ''}`).join(', ') || 'request';
 }
 
 // ------------------------------------------------------------------ folders

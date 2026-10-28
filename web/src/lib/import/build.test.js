@@ -22,6 +22,7 @@ test('builds a collection, secrets stay by default', () => {
   assert.equal(parseCollection(files['postbote.yaml']).doc.name, 'Shop API');
   assert.equal(parseCollection(files['postbote.yaml']).doc.auth.token, 'col-secret');
   assert.equal(parseFolder(files['requests/orders/_folder.yaml']).doc.name, 'Orders');
+  assert.equal(parseFolder(files['requests/orders/_folder.yaml']).doc.seq, 1);
   assert.equal(parseRequest(files['requests/orders/list-orders.req.yaml']).doc.seq, 1);
   assert.equal(parseRequest(files['requests/orders/list-orders-2.req.yaml']).doc.seq, 2);
   assert.equal(parseRequest(files['requests/ping.req.yaml']).doc.url, '{{baseUrl}}/ping');
@@ -49,4 +50,22 @@ test('literal secrets move into the chosen environment', () => {
 
   const fresh = buildCollectionFiles(result(), { secretsEnv: 'local' }).files;
   assert.deepEqual(parseEnv(fresh['environments/local.env']).map((v) => v.key), ['token', 'apiKey']);
+});
+
+test('folders keep the source order in the sidebar', async () => {
+  const { buildTree } = await import('../tree.js');
+  const r = result();
+  r.folders = [
+    { path: 'requests/users', doc: { name: 'Users' } },
+    { path: 'requests/orders', doc: { name: 'Orders' } },
+    { path: 'requests/users/admins', doc: { name: 'Admins' } },
+  ];
+  r.requests = [
+    { dir: 'requests/users', doc: { name: 'A', method: 'GET', url: '/' } },
+    { dir: 'requests/orders', doc: { name: 'B', method: 'GET', url: '/' } },
+    { dir: 'requests/users/admins', doc: { name: 'C', method: 'GET', url: '/' } },
+  ];
+  const tree = buildTree(buildCollectionFiles(r).files);
+  assert.deepEqual(tree.root.folders.map((f) => f.label), ['Users', 'Orders']);
+  assert.deepEqual(tree.root.folders[0].folders.map((f) => f.label), ['Admins']);
 });

@@ -193,7 +193,8 @@ export const removeItems = (fn) => [
 
 export const deleteFolder = guard(async (dir, mode) => {
   const files = Object.keys(app.files).filter((p) => p.startsWith(dir + '/'));
-  if (!(await discard(`Remove folder “${basename(dir)}”?`, `${files.length} file(s): ${dir}/`, { files, trash: [dir], mode }))) return;
+  const label = parseFolder(app.files[`${dir}/${FOLDER_FILE}`] || '').doc?.name || basename(dir);
+  if (!(await discard(`Remove folder “${label}”?`, `${files.length} file(s): ${dir}/`, { files, trash: [dir], mode }))) return;
   if (app.selected?.path?.startsWith(dir)) select(null);
 });
 
