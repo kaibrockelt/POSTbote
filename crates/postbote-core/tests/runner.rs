@@ -225,3 +225,101 @@ fn script_limits() {
     let r = run(mk(), Target::Request("requests/syntax.req.yaml".into()), opts()).request.unwrap();
     assert!(r.script_errors[0].contains("SyntaxError"), "{:?}", r.script_errors);
 }
+
+#[test]
+fn node_workflow_runs_nodes_loops_switches_and_subworkflows() {
+    let base = echo_server();
+    let graph = r#"name: Onboard
+nodes:
+  - { id: start, type: manual, payload: '{"ids": [1, 2, 3], "color": "red", "region": "evil"}' }
+  - id: prep
+    type: compute
+    input: json
+    code: "return input.ids.map(id => ({ id, color: 'green', region: 'evil' }))"
+  - { id: each, type: forEach, input: json, child: call }
+  - { id: call, type: call, input: json, request: requests/item.req.yaml }
+  - id: sum
+    type: compute
+    code: "return input.map(r => r.path + '|' + r.headers['x-color'] + '|' + r.headers['x-region'])"
+  - id: check
+    type: switch
+    cases: [{ name: three, expr: "input.length === 3" }]
+  - { id: save, type: writeFile, input: json, path: "data/{{input.0}}.json", format: json }
+  - { id: csv, type: makeCsv }
+  - { id: done, type: return }
+  - { id: other, type: return }
+edges:
+  - { from: start, out: out, to: prep }
+  - { from: prep, out: out, to: each }
+  - { from: each, out: out, to: sum }
+  - { from: sum, out: out, to: check }
+  - { from: check, out: three, to: save }
+  - { from: check, out: default, to: other }
+  - { from: save, out: out, to: done }
+"#;
+    let fs = collection(
+        &base,
+        &[
+            ("postbote.yaml", &format!("version: 1\nname: T\nvariables:\n  baseUrl: {base}\n  color: blue\n")),
+            ("requests/item.req.yaml", "name: Item\nurl: \"{{baseUrl}}/item/{{input.id}}\"\nheaders:\n  - key: X-Color\n    value: \"{{color}}\"\n  - key: X-Region\n    value: \"{{region}}\"\n"),
+            ("workflows/onboard.workflow.yaml", graph),
+        ],
+    );
+    let out = run(fs, Target::Graph("workflows/onboard.workflow.yaml".into(), None), opts());
+    let g = out.graph.unwrap();
+    assert!(g.error.is_none(), "{:?} {:#?}", g.error, g.steps);
+    // input fields override collection variables (color) but never the environment (region=eu)
+    let expected = serde_json::json!(["/item/1|green|eu", "/item/2|green|eu", "/item/3|green|eu"]);
+    assert_eq!(g.result.unwrap(), expected);
+    assert_eq!(g.steps.iter().filter(|s| s.kind == "call").count(), 3);
+    let written = out.changed_files.get("data//item/1|green|eu.json").or(out.changed_files.values().next());
+    assert!(written.is_some(), "{:?}", out.changed_files.keys().collect::<Vec<_>>());
+}
+
+#[test]
+fn node_workflow_error_ports_and_subworkflows() {
+    let base = echo_server();
+    let main = r#"nodes:
+  - { id: s, type: manual, payload: '{"n": 21}' }
+  - { id: sub, type: workflow, workflow: workflows/double.workflow.yaml }
+  - { id: bad, type: compute, code: "throw new Error('boom')" }
+  - { id: catch, type: compute, code: "return { caught: input.message }" }
+  - { id: ret, type: return }
+edges:
+  - { from: s, out: out, to: sub }
+  - { from: sub, out: out, to: bad }
+  - { from: bad, out: err, to: catch }
+  - { from: catch, out: out, to: ret }
+"#;
+    let double = r#"nodes:
+  - { id: in, type: fromWorkflow, input: json }
+  - { id: x2, type: compute, code: "return { n: input.n * 2 }" }
+  - { id: r, type: return }
+edges:
+  - { from: in, out: out, to: x2 }
+  - { from: x2, out: out, to: r }
+"#;
+    let unhandled = "nodes:\n  - { id: s, type: manual }\n  - { id: c, type: call, request: requests/missing.req.yaml }\nedges:\n  - { from: s, out: out, to: c }\n";
+    let recursive = "nodes:\n  - { id: s, type: manual, payload: '{}' }\n  - { id: in, type: fromWorkflow }\n  - { id: w, type: workflow, workflow: workflows/loop.workflow.yaml }\nedges:\n  - { from: s, out: out, to: w }\n  - { from: in, out: out, to: w }\n";
+    let mk = || {
+        collection(
+            &base,
+            &[
+                ("workflows/main.workflow.yaml", main),
+                ("workflows/double.workflow.yaml", double),
+                ("workflows/unhandled.workflow.yaml", unhandled),
+                ("workflows/loop.workflow.yaml", recursive),
+            ],
+        )
+    };
+    let g = run(mk(), Target::Graph("workflows/main.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.is_none(), "{:?}", g.error);
+    assert_eq!(g.result.unwrap(), serde_json::json!({ "caught": "Error: boom" }));
+    assert!(g.steps.iter().any(|s| s.kind == "workflow" && s.output["value"] == serde_json::json!({ "n": 42 })));
+
+    let g = run(mk(), Target::Graph("workflows/unhandled.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.as_deref().unwrap_or("").contains("missing.req.yaml"), "{:?}", g.error);
+
+    let g = run(mk(), Target::Graph("workflows/loop.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.as_deref().unwrap_or("").contains("nested deeper"), "{:?}", g.error);
+}

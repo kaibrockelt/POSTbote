@@ -187,6 +187,47 @@ pub fn load_workflow(fs: &dyn Fs, p: &str) -> Result<Workflow> {
     decode(fs, p)
 }
 
+/// A node-based workflow (`workflows/**/<name>.workflow.yaml`): nodes connected
+/// by edges from an output port (`out`, `err`, a switch case or `default`) to
+/// the input of another node. Type-specific settings stay in `cfg`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Graph {
+    pub name: String,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GraphNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub name: String,
+    /// expected input: json | csv | text | file | none ("" accepts anything)
+    pub input: String,
+    #[serde(flatten)]
+    pub cfg: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GraphEdge {
+    pub from: String,
+    pub out: String,
+    pub to: String,
+}
+
+pub const GRAPH_EXT: &str = ".workflow.yaml";
+
+pub fn load_graph(fs: &dyn Fs, p: &str) -> Result<Graph> {
+    if !p.ends_with(GRAPH_EXT) {
+        bail!("{p} is not a workflow file (*{GRAPH_EXT})");
+    }
+    decode(fs, p)
+}
+
 /// Folder settings of every ancestor directory of a request, outermost first.
 /// Directories without `_folder.yaml` are skipped.
 pub fn load_folder_chain(fs: &dyn Fs, req_path: &str) -> Result<Vec<Folder>> {

@@ -4,6 +4,7 @@
 //! native side through a single `__host(op, argsJson)` function (see
 //! `prelude.js` and `host.rs`), which keeps the FFI surface tiny.
 
+mod graph;
 mod host;
 pub mod http;
 
@@ -146,6 +147,8 @@ pub struct RunOutput {
     pub request: Option<RequestResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<graph::GraphResult>,
     /// files written by the run (environment updates, fs.write); None = deleted
     pub changed_files: BTreeMap<String, Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -166,6 +169,8 @@ impl RunOutput {
 pub enum Target {
     Request(String),
     Workflow(String),
+    /// node workflow and the starter node to begin with (default: the first manual starter)
+    Graph(String, Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +259,13 @@ struct State {
     row: Option<Value>,
     /// collection + folder variables of the request being executed
     scope_vars: BTreeMap<String, String>,
+    /// workflow node input: `{{input}}` / `{{input.field}}` in a called request
+    graph_input: Option<Value>,
+    /// top-level fields of a JSON node input: override folder/collection
+    /// variables of a called request, never the environment
+    input_vars: BTreeMap<String, String>,
+    /// workflow call node with "use folder settings" off
+    skip_folders: bool,
     tests: Vec<TestResult>,
     logs: Vec<LogEntry>,
     source: String,
@@ -283,6 +295,21 @@ impl State {
         }
         if let Some(v) = self.env.get(name) {
             return Some(v.clone());
+        }
+        if let Some(v) = self.input_vars.get(name) {
+            return Some(v.clone());
+        }
+        if let Some(input) = &self.graph_input {
+            if name == "input" {
+                return Some(var_text(input));
+            }
+            if let Some(path) = name.strip_prefix("input.") {
+                let found = path.split('.').try_fold(input, |v, k| match v {
+                    Value::Array(a) => k.parse::<usize>().ok().and_then(|i| a.get(i)),
+                    _ => v.get(k),
+                });
+                return found.map(var_text);
+            }
         }
         if let Some(v) = self.scope_vars.get(name) {
             return Some(v.clone());
@@ -402,6 +429,9 @@ impl Engine {
             vars: Map::new(),
             row: None,
             scope_vars: BTreeMap::new(),
+            graph_input: None,
+            input_vars: BTreeMap::new(),
+            skip_folders: false,
             tests: Vec::new(),
             logs: Vec::new(),
             source: String::new(),
@@ -513,7 +543,8 @@ impl Engine {
     fn exec_request_inner(&self, path: &str, step: Option<&Step>, res: &mut RequestResult) {
         let loaded = {
             let st = self.st.borrow();
-            model::load_request(&st.fs, path).and_then(|r| Ok((r, model::load_folder_chain(&st.fs, path)?)))
+            let skip = st.skip_folders;
+            model::load_request(&st.fs, path).and_then(|r| Ok((r, if skip { Vec::new() } else { model::load_folder_chain(&st.fs, path)? })))
         };
         let (req, folders) = match loaded {
             Ok(x) => x,
@@ -1005,6 +1036,7 @@ pub fn run(fs: Box<dyn Fs>, target: Target, opts: RunOptions) -> RunOutput {
     match &target {
         Target::Request(p) => out.request = Some(engine.exec_request(p, None)),
         Target::Workflow(p) => out.workflow = Some(engine.exec_workflow(p)),
+        Target::Graph(p, starter) => out.graph = Some(engine.exec_graph(p, starter.as_deref(), None, 0)),
     }
     match engine.finish() {
         Ok(changes) => out.changed_files = changes,
