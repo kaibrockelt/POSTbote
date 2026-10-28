@@ -61,7 +61,7 @@
       let files = mode === 'import' ? imported?.files : undefined;
       if (mode === 'import' && imported?.result) {
         const env = secretsEnv === NEW_ENV ? newEnvName.trim() || 'default' : secretsEnv;
-        const built = buildCollectionFiles({ ...imported.result, name: name || imported.name }, { secretsEnv: env });
+        const built = buildCollectionFiles({ ...$state.snapshot(imported.result), name: name || imported.name }, { secretsEnv: env });
         files = built.files;
         for (const n of built.notes) toast(n);
       }
@@ -110,7 +110,7 @@
         {#if imported?.result}
           {@const r = imported.result}
           <p class="muted">
-            {imported.format}: {r.requests.length} requests{r.folders.length ? `, ${r.folders.length} folders` : ''}{r.environments?.length
+            {imported.format}: {r.requests.length} request{r.requests.length === 1 ? '' : 's'}{r.folders.length ? `, ${r.folders.length} folder${r.folders.length === 1 ? '' : 's'}` : ''}{r.environments?.length
               ? `, environments: ${r.environments.map((e) => e.name).join(', ')}`
               : ''}
           </p>
