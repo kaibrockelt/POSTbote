@@ -53,16 +53,26 @@ function rewriteRefs(moves) {
 export const newRequest = guard(async (dir = 'requests') => {
   const formats = requestImporters.map((i) => i.label).join(', ');
   const paste = formats && {
-    label: `…or paste a request (${formats}) – optional`,
+    label: `Paste a request (${formats}) – optional`,
     placeholder: "curl https://api.example.com/users -H 'Accept: application/json'",
-    hint: app.env ? `Tokens and keys go to the private values of “${app.env}”.` : 'Activate an environment first to move tokens and keys into its private values.',
+    target: {
+      label: 'Store tokens and keys in',
+      value: '',
+      options: [
+        { value: '', label: 'Nowhere (keep them in the request)' },
+        { value: NEW_ENV, label: 'New environment…' },
+        ...listEnvs(app.files).map((e) => ({ value: e.name, label: e.name })),
+      ],
+    },
   };
   const res = await ask('New request', '', { placeholder: paste ? 'Name (optional when pasting)' : 'e.g. Get user', paste });
-  const { value: name, paste: text } = typeof res === 'string' ? { value: res, paste: '' } : res || {};
+  const { value: name, paste: text, target } = typeof res === 'string' ? { value: res, paste: '' } : res || {};
   if (!name && !text) return;
   let doc = emptyRequest(name);
   if (text) {
-    const imported = importRequestInto(text, dir, name);
+    const env = target === NEW_ENV ? await createEnv() : target;
+    if (env === null) return;
+    const imported = importRequestInto(text, dir, name, env);
     doc = imported.doc;
     toast(imported.notes.join(' · '));
     for (const w of imported.warnings) toast(w);
@@ -186,17 +196,25 @@ export const renameWorkflow = guard(async (path) => {
   if (to !== path && !(to in app.files)) await renameFile(path, to);
 });
 
-export const newEnv = guard(async () => {
+const NEW_ENV = '\0new';
+
+/** Asks for a name and creates the environment; null when cancelled. */
+async function createEnv() {
   const name = await ask('New environment', '', {
     placeholder: 'e.g. staging',
     hint: 'Shared values go to <name>.env.pub (committed), secrets to <name>.env (private).',
   });
-  if (!name) return;
+  if (!name) return null;
   const env = slug(name);
   if (listEnvs(app.files).some((e) => e.name === env)) throw new Error(`environment ${env} already exists`);
   write(envPublicPath(env), `# shared values of "${env}", committed to git: no secrets here\n`);
-  select({ kind: 'env', path: env });
   if (!app.env) setEnv(env);
+  return env;
+}
+
+export const newEnv = guard(async () => {
+  const env = await createEnv();
+  if (env) select({ kind: 'env', path: env });
 });
 
 export const renameEnv = guard(async (env) => {

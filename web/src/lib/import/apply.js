@@ -1,5 +1,5 @@
 // Applies an imported request to the open collection: known base URLs become
-// variables, secrets move to the private part of the active environment.
+// variables, secrets move to the private part of the chosen environment.
 import { app, contentOf, write } from '../state.svelte.js';
 import { emptyRequest, parseEnv, updateEnv, envPublicPath, envPrivatePath } from '../format.js';
 import { variableScope } from '../vars.js';
@@ -7,26 +7,25 @@ import { importRequest, nameFromUrl } from './index.js';
 import { extractSecrets, useKnownVars } from './secrets.js';
 
 /** Returns { doc, notes } for the pasted text, ready for serializeRequest(). */
-export function importRequestInto(text, dir, name = '') {
+/** `env`: environment that receives the secrets ('' keeps them in the request). */
+export function importRequestInto(text, dir, name = '', env = '') {
   const { format, doc: parsed, warnings } = importRequest(text);
   const base = emptyRequest(name);
   const doc = { ...base, ...parsed, body: { ...base.body, ...parsed.body }, auth: { ...base.auth, ...parsed.auth } };
   doc.name = name || parsed.name || nameFromUrl(doc.method, doc.url);
   const notes = [`Imported ${format}`];
 
-  const scope = [...variableScope(app.files, app.env, dir).values()].filter((v) => !['runtime', 'builtin'].includes(v.source));
+  const scope = [...variableScope(app.files, env || app.env, dir).values()].filter((v) => !['runtime', 'builtin'].includes(v.source));
   const urlVar = useKnownVars(doc, scope);
   if (urlVar) notes.push(`URL uses {{${urlVar}}}`);
 
-  if (app.env) {
+  if (env) {
     const taken = new Map(scope.map((v) => [v.name, v.value]));
     const secrets = extractSecrets(doc, taken);
     if (secrets.length) {
-      storeSecrets(app.env, secrets);
-      notes.push(`${secrets.map((s) => s.key).join(', ')} moved to the private values of “${app.env}”`);
+      storeSecrets(env, secrets);
+      notes.push(`${secrets.map((s) => s.key).join(', ')} moved to the private values of “${env}”`);
     }
-  } else if (extractSecrets(structuredClone(doc)).length) {
-    warnings.push('The request contains secrets (tokens, keys). Activate an environment before importing to move them into its private values.');
   }
   return { doc, notes, warnings };
 }

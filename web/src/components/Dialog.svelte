@@ -2,6 +2,7 @@
   import { app } from '../lib/state.svelte.js';
   let value = $state('');
   let paste = $state(''); // optional second field of a prompt (e.g. a pasted cURL command)
+  let target = $state(''); // choice that belongs to the pasted text
   let input = $state();
   let primary = $state();
 
@@ -9,6 +10,7 @@
     if (app.dialog) {
       value = app.dialog.value ?? '';
       paste = '';
+      target = app.dialog.paste?.target?.value ?? '';
       queueMicrotask(() => (app.dialog?.type === 'prompt' ? input?.select() : primary?.focus()));
     }
   });
@@ -26,7 +28,7 @@
   function submit(e) {
     e.preventDefault();
     const t = app.dialog.type;
-    if (t === 'prompt' && app.dialog.paste) return close({ value: value.trim(), paste: paste.trim() });
+    if (t === 'prompt' && app.dialog.paste) return close({ value: value.trim(), paste: paste.trim(), target });
     close(t === 'confirm' ? true : t === 'unsaved' ? 'save' : t === 'info' ? true : value.trim());
   }
   function pasteKeydown(e) {
@@ -54,7 +56,14 @@
             <span class="muted small">{app.dialog.paste.label}</span>
             <textarea class="mono" rows="6" bind:value={paste} placeholder={app.dialog.paste.placeholder || ''} onkeydown={pasteKeydown} spellcheck="false"></textarea>
           </label>
-          {#if app.dialog.paste.hint}<p class="hint">{app.dialog.paste.hint}</p>{/if}
+          {#if app.dialog.paste.target}
+            <label class="target row gap">
+              <span class="muted small">{app.dialog.paste.target.label}</span>
+              <select bind:value={target}>
+                {#each app.dialog.paste.target.options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
+              </select>
+            </label>
+          {/if}
         {/if}
       {/if}
       <div class="row end gap">
@@ -87,6 +96,9 @@
     resize: vertical;
     font-size: 12px;
     white-space: pre;
+  }
+  .target {
+    align-items: center;
   }
   .msg {
     margin: 0;
