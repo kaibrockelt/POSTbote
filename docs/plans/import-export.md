@@ -68,5 +68,11 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
   external files selected together with the spec, `operationId` kept in the docs for a later sync;
   callbacks/webhooks are skipped with a warning. Checked against the OAI and learn.openapis.org
   examples and the Swagger Petstore v3.
+- **.http / HAR** (branch `feature/import-http-har`): `.http`/`.rest` files (JetBrains, VS Code) with
+  `@vars`, `###` titles and `# @name`, multi-line queries, `< file` bodies, scripts as comments,
+  JetBrains `http-client(.private).env.json` as shared/private environments, several files as folders;
+  a pasted raw HTTP request works in "New request". HAR: API calls only (when the browser marked the
+  type), one folder per host, repeated calls deduplicated, pseudo/browser headers dropped or disabled,
+  cookies left to the cookie jar.
 - **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
   writes the files and browser-stored collections work the same; a CLI import would need a Rust port.
