@@ -5,7 +5,7 @@ import YAML from 'yaml';
 export const MANIFEST = 'postbote.yaml';
 export const FOLDER_FILE = '_folder.yaml';
 export const REQ_EXT = '.req.yaml';
-export const FLOW_EXT = '.flow.yaml';
+export const RUNNER_EXT = '.runner.yaml';
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
 export function parseYaml(text) {
@@ -212,7 +212,7 @@ export function serializeCollection(c) {
   );
 }
 
-// ------------------------------------------------------------ workflow
+// ------------------------------------------------------------ runner
 
 export function parseWorkflow(text) {
   const { doc, error } = parseYaml(text);
@@ -434,6 +434,6 @@ export function scaffold(name) {
         post: "test('status is 200', () => expect(res.status).toBe(200));\ntest('has a slideshow', () => expect(res.json()).toHaveProperty('slideshow'));\n",
       },
     }),
-    'README.md': `# ${name}\n\nAPI collection for [postbote](https://github.com/). Everything is plain text:\n\n- \`postbote.yaml\` collection settings, variables, scripts\n- \`requests/**/*.req.yaml\` requests, \`_folder.yaml\` folder settings\n- \`workflows/*.flow.yaml\` workflows\n- \`environments/<name>.env.pub\` shared environment values (committed), \`<name>.env\` private overrides (gitignored)\n`,
+    'README.md': `# ${name}\n\nAPI collection for [postbote](https://github.com/). Everything is plain text:\n\n- \`postbote.yaml\` collection settings, variables, scripts\n- \`requests/**/*.req.yaml\` requests, \`_folder.yaml\` folder settings\n- \`runners/*.runner.yaml\` runners (request chains over data rows)\n- \`environments/<name>.env.pub\` shared environment values (committed), \`<name>.env\` private overrides (gitignored)\n`,
   };
 }

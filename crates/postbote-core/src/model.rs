@@ -7,7 +7,7 @@
 //! environments/<name>.env.pub    public environment (committed)
 //! requests/**/_folder.yaml       optional folder settings (headers, vars, auth, scripts)
 //! requests/**/<name>.req.yaml    a request
-//! workflows/**/<name>.flow.yaml  a workflow
+//! runners/**/<name>.runner.yaml  a runner (request chain with data rows)
 //! anything else                  free text files (e.g. data/*.csv) usable from scripts
 //! ```
 
@@ -21,7 +21,7 @@ use crate::fs::{Fs, is_not_found, parent};
 pub const MANIFEST: &str = "postbote.yaml";
 pub const FOLDER_FILE: &str = "_folder.yaml";
 pub const REQUEST_EXT: &str = ".req.yaml";
-pub const WORKFLOW_EXT: &str = ".flow.yaml";
+pub const RUNNER_EXT: &str = ".runner.yaml";
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -181,8 +181,8 @@ pub fn load_request(fs: &dyn Fs, p: &str) -> Result<Request> {
 }
 
 pub fn load_workflow(fs: &dyn Fs, p: &str) -> Result<Workflow> {
-    if !p.ends_with(WORKFLOW_EXT) {
-        bail!("{p} is not a workflow file (*{WORKFLOW_EXT})");
+    if !p.ends_with(RUNNER_EXT) {
+        bail!("{p} is not a runner file (*{RUNNER_EXT})");
     }
     decode(fs, p)
 }

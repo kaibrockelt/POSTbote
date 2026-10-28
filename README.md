@@ -1,14 +1,14 @@
 # POSTBote
 
 An offline-first API client in the spirit of Postman and Bruno, built for digital sovereignty:
-**no cloud, no account, no telemetry.** Collections, environments, workflows and scripts are plain
+**no cloud, no account, no telemetry.** Collections, environments, runners and scripts are plain
 text files that live in your folder (or your browser) and can be versioned with git.
 
 - Collections with nested folders, inherited headers/variables/auth/scripts
 - Environments as dotenv files: shared values in `<name>.env.pub` (committed) overlaid by private
   secrets in `<name>.env` (gitignored)
-- Workflows: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
-- JavaScript scripting (QuickJS) before/after requests and before/after workflows: read, iterate, write files
+- Runners: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
+- JavaScript scripting (QuickJS) before/after requests and before/after runners: read, iterate, write files
 - Desktop app (Tauri, system webview — no Electron), local browser mode, multi-user Docker server, CLI for CI
 
 ## Run it
@@ -69,12 +69,12 @@ the files for the duration of a run and keeps nothing.
 
 ```bash
 postbote run path/to/collection requests/users/get-user.req.yaml --env staging
-postbote run path/to/collection workflows/onboarding.flow.yaml --env staging --json
+postbote run path/to/collection runners/onboarding.runner.yaml --env staging --json
 ```
 
 Exit code `1` when a request fails, a script throws or a test fails.
 
-Try the bundled example: `postbote run examples/demo workflows/onboarding.flow.yaml --env staging`.
+Try the bundled example: `postbote run examples/demo runners/onboarding.runner.yaml --env staging`.
 
 ## Collection format
 
@@ -91,9 +91,9 @@ my-api/
 │   └── users/
 │       ├── _folder.yaml              # folder headers / variables / auth / scripts
 │       └── get-user.req.yaml
-├── workflows/
-│   └── onboarding.flow.yaml
-└── data/users.csv                    # any text file, usable from scripts and workflows
+├── runners/
+│   └── onboarding.runner.yaml
+└── data/users.csv                    # any text file, usable from scripts and runners
 ```
 
 ```yaml

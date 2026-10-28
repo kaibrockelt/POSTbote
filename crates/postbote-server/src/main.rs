@@ -52,11 +52,11 @@ enum Cmd {
         #[arg(long, env = "POSTBOTE_SECURE_COOKIES")]
         secure_cookies: bool,
     },
-    /// Run a request or workflow from the command line, e.g. in CI
+    /// Run a request or runner from the command line, e.g. in CI
     Run {
         /// collection folder (contains postbote.yaml)
         dir: PathBuf,
-        /// request (*.req.yaml) or workflow (*.flow.yaml), relative to the collection
+        /// request (*.req.yaml) or runner (*.runner.yaml), relative to the collection
         path: String,
         /// environment name: environments/<name>.env.pub overlaid by environments/<name>.env
         #[arg(long, short)]
@@ -175,7 +175,7 @@ fn run_cli(dir: PathBuf, path: String, env: Option<String>) -> Result<RunOutput>
             Some(name)
         }
     };
-    let target = if path.ends_with(postbote_core::model::WORKFLOW_EXT) { Target::Workflow(path) } else { Target::Request(path) };
+    let target = if path.ends_with(postbote_core::model::RUNNER_EXT) { Target::Workflow(path) } else { Target::Request(path) };
     Ok(runner::run(Box::new(fs), target, RunOptions { env, ..Default::default() }))
 }
 
@@ -207,7 +207,7 @@ fn print_output(out: &RunOutput) {
         print_request(r, "");
     }
     if let Some(w) = &out.workflow {
-        println!("workflow {}", w.name);
+        println!("runner {}", w.name);
         for l in &w.logs {
             println!("  [{}] {}", l.level, l.message);
         }

@@ -21,7 +21,7 @@
       <div><b>util</b>.uuid/now/isoNow/randomInt/base64Encode/base64Decode/hash(alg,s)/hmac(alg,key,msg)/sleep(ms)</div>
       <div><b>postbote</b>.sendRequest({'{method, url, headers, body}'}) → res</div>
       {#if context === 'workflow'}
-        <div><b>wf</b>.rows (set in pre-workflow) .row .iteration .results .last · goto(step) stop(reason) skipIteration()</div>
+        <div><b>wf</b>.rows (set in the pre-run script) .row .iteration .results .last · goto(step) stop(reason) skipIteration()</div>
       {/if}
       <div><b>console</b>.log/info/warn/error</div>
     </div>

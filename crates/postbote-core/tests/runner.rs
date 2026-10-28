@@ -156,7 +156,7 @@ fn workflow_iterates_csv_and_supports_goto() {
             ("requests/echo.req.yaml", "name: Echo\nmethod: GET\nurl: '{{baseUrl}}/echo/{{name}}'\n"),
             ("requests/missing.req.yaml", "name: Missing\nmethod: GET\nurl: '{{baseUrl}}/status/404'\n"),
             (
-                "workflows/users.flow.yaml",
+                "runners/users.runner.yaml",
                 r#"name: Users
 data: data/users.csv
 scripts:
@@ -185,7 +185,7 @@ steps:
             ),
         ],
     );
-    let out = run(fs, Target::Workflow("workflows/users.flow.yaml".into()), opts());
+    let out = run(fs, Target::Workflow("runners/users.runner.yaml".into()), opts());
     let w = out.workflow.unwrap();
     assert!(w.error.is_none() && w.script_errors.is_empty(), "{:?} {:?}", w.error, w.script_errors);
     assert_eq!(w.iterations.len(), 2);

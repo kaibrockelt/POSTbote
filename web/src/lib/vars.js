@@ -4,7 +4,7 @@
 import {
   MANIFEST,
   FOLDER_FILE,
-  FLOW_EXT,
+  RUNNER_EXT,
   parseCollection,
   parseFolder,
   parseEnv,
@@ -23,7 +23,7 @@ export const SOURCE_LABEL = {
   folder: 'Folder variable',
   envpub: 'Environment variable (shared)',
   env: 'Environment variable (private)',
-  runtime: 'Set at runtime (script or workflow data)',
+  runtime: 'Set at runtime (script or runner data)',
   builtin: 'Built-in dynamic value',
   missing: 'Unresolved',
 };
@@ -76,9 +76,9 @@ export function variableScope(files, env, reqPath = '') {
     if (priv != null) for (const v of parseEnv(priv)) if (v.value !== '' || !m.has(v.key) || m.get(v.key).source !== 'envpub') put(v.key, v.value, 'env', `${env} (private)`, true);
   }
 
-  // names that only exist at runtime: vars.set(...) in scripts, workflow data columns
+  // names that only exist at runtime: vars.set(...) in scripts, runner data columns
   for (const [path, text] of Object.entries(files)) {
-    if (path.endsWith(FLOW_EXT)) {
+    if (path.endsWith(RUNNER_EXT)) {
       const w = parseWorkflow(text).doc;
       if (w?.data) for (const c of dataColumns(files[w.data], w.data)) if (!m.has(c)) put(c, '', 'runtime', `Data column of ${w.data}`);
     }

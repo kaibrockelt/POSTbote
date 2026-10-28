@@ -269,6 +269,8 @@ struct RunReq {
     kind: String,
     path: String,
     env: Option<String>,
+    /// runner rows from the editor (replaces the data file)
+    data: Option<String>,
 }
 
 struct CancelOnDrop(Arc<AtomicBool>);
@@ -308,6 +310,7 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
         max_duration: Duration::from_secs(s.cfg.max_run_seconds),
         memory_limit: s.cfg.memory_limit_mb << 20,
         cancel,
+        data: r.data,
         ..Default::default()
     };
     let out = tokio::task::spawn_blocking(move || runner::run(fs, target, opts))

@@ -2,7 +2,7 @@
 import {
   FOLDER_FILE,
   REQ_EXT,
-  FLOW_EXT,
+  RUNNER_EXT,
   slug,
   uniquePath,
   dirname,
@@ -42,10 +42,10 @@ const emptyRequest = (name) => ({
   docs: '',
 });
 
-/** Keeps workflow step references valid after files were moved. */
+/** Keeps runner step references valid after files were moved. */
 function rewriteRefs(moves) {
   for (const [path, text] of Object.entries(app.files)) {
-    if (!path.endsWith(FLOW_EXT)) continue;
+    if (!path.endsWith(RUNNER_EXT)) continue;
     const { doc } = parseWorkflow(text);
     if (!doc) continue;
     let changed = false;
@@ -163,21 +163,21 @@ export const deleteFile = guard(async (path, label) => {
 });
 
 export const newWorkflow = guard(async () => {
-  const name = await ask('New workflow', '', { placeholder: 'e.g. Onboard users' });
+  const name = await ask('New runner', '', { placeholder: 'e.g. Onboard users' });
   if (!name) return;
-  const path = uniquePath(app.files, 'workflows', slug(name), FLOW_EXT);
+  const path = uniquePath(app.files, 'runners', slug(name), RUNNER_EXT);
   write(path, serializeWorkflow({ name, data: '', steps: [], scripts: { pre: '', post: '' }, settings: { stopOnFailure: false, delayMs: '', maxIterations: '' } }));
   select({ kind: 'workflow', path });
 });
 
 export const renameWorkflow = guard(async (path) => {
   const { doc } = parseWorkflow(app.files[path]);
-  if (!doc) throw new Error('fix the YAML of this workflow first');
-  const name = await ask('Rename workflow', doc.name);
+  if (!doc) throw new Error('fix the YAML of this runner first');
+  const name = await ask('Rename runner', doc.name);
   if (!name) return;
   doc.name = name;
   write(path, serializeWorkflow(doc));
-  const to = uniquePath({ ...app.files, [path]: undefined }, dirname(path), slug(name), FLOW_EXT);
+  const to = uniquePath({ ...app.files, [path]: undefined }, dirname(path), slug(name), RUNNER_EXT);
   if (to !== path && !(to in app.files)) await renameFile(path, to);
 });
 
@@ -216,7 +216,7 @@ export const deleteEnv = guard(async (env) => {
 });
 
 export const newFile = guard(async () => {
-  const path = await ask('New file', 'data/', { placeholder: 'data/users.csv', hint: 'Any text file, e.g. CSV/JSON data for workflows and scripts.' });
+  const path = await ask('New file', 'data/', { placeholder: 'data/users.csv', hint: 'Any text file, e.g. CSV/JSON data for runners and scripts.' });
   if (!path || path.endsWith('/')) return;
   if (path in app.files) throw new Error(`${path} already exists`);
   write(path, '');

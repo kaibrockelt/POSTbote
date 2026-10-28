@@ -59,7 +59,7 @@
         <KvTable bind:rows={d.doc.variables} toggle={false} keyPlaceholder="Variable" />
         <p class="hint">
           Collection variables live in <code>postbote.yaml</code> and are committed. Lookup order for <code>{'{{name}}'}</code>: runtime
-          <code>vars</code> → workflow data row → active environment → folder variables → collection variables.
+          <code>vars</code> → runner data row → active environment → folder variables → collection variables.
         </p>
       {:else if tab === 'headers'}
         <KvTable bind:rows={d.doc.headers} keyPlaceholder="Header" />

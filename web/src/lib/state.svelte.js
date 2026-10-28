@@ -8,7 +8,7 @@ import {
   MANIFEST,
   FOLDER_FILE,
   REQ_EXT,
-  FLOW_EXT,
+  RUNNER_EXT,
   parseYaml,
   scaffold,
   parseRequest,
@@ -40,6 +40,7 @@ export const app = $state({
   env: '',
   results: {}, // path -> run output
   running: {}, // path -> AbortController
+  dataScratch: {}, // workflow path -> data typed into the editor without a file
   toasts: [],
   dialog: null,
   picker: null, // folder picker fallback when no native dialog exists
@@ -288,15 +289,19 @@ export function setDraft(path, text) {
   persistUi();
 }
 
-/** Files saved together with a tab (a workflow also saves its data file). */
+/** Files saved together with a tab (workflow data files have their own buttons). */
 export function tabFiles(t) {
   if (t.kind === 'env') return [envPublicPath(t.path), envPrivatePath(t.path)];
-  const files = [tabFile(t)];
-  if (t.kind === 'workflow') {
-    const data = parseWorkflow(contentOf(t.path)).doc?.data;
-    if (data) files.push(data);
-  }
-  return files;
+  return [tabFile(t)];
+}
+
+/** Writes the draft of a single file (e.g. a workflow's data file). */
+export function saveFile(path) {
+  if (!(path in app.drafts)) return;
+  const text = app.drafts[path];
+  delete app.drafts[path];
+  write(path, text);
+  persistUi();
 }
 
 export const isDirty = (path) => path in app.drafts;
@@ -469,7 +474,7 @@ export async function saveTabAs(t = app.selected) {
     const name = await ask('Save as', `${doc.name || 'copy'} copy`, { placeholder: 'Name' });
     if (!name) return false;
     doc.name = name;
-    target = uniquePath(app.files, dirname(t.path), slug(name), isReq ? REQ_EXT : FLOW_EXT);
+    target = uniquePath(app.files, dirname(t.path), slug(name), isReq ? REQ_EXT : RUNNER_EXT);
     write(target, (isReq ? serializeRequest : serializeWorkflow)(doc));
   } else if (t.kind === 'env') {
     const name = await ask('Save environment as', `${t.path}-copy`);
@@ -596,6 +601,7 @@ export async function run(kind, path) {
   try {
     // runs use what the editors show, including unsaved drafts
     const body = { kind, path, env: app.env || undefined, overrides: $state.snapshot(app.drafts) };
+    if (kind === 'workflow') body.data = workflowData(path);
     if (app.ws.storage === 'browser') body.files = $state.snapshot(app.files);
     else body.workspace = app.ws.id;
     const out = await api.run(body, ctrl.signal);
@@ -607,6 +613,13 @@ export async function run(kind, path) {
   } finally {
     delete app.running[path];
   }
+}
+
+/** Rows for a workflow run: always what its data editor shows (file or scratch). */
+export function workflowData(path) {
+  const file = parseWorkflow(contentOf(path)).doc?.data;
+  if (!file) return app.dataScratch[path] || '';
+  return file in app.files ? contentOf(file) : undefined; // missing file: let the runner report it
 }
 
 export function cancelRun(path) {

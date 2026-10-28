@@ -1,4 +1,4 @@
-//! Executes requests and workflows including their script chains.
+//! Executes requests and runners including their script chains.
 //!
 //! One run = one QuickJS runtime on the calling thread. Scripts talk to the
 //! native side through a single `__host(op, argsJson)` function (see
@@ -179,6 +179,9 @@ pub struct RunOptions {
     pub max_body: usize,
     pub memory_limit: usize,
     pub cancel: Arc<AtomicBool>,
+    /// runner rows as text (CSV/TSV with header or a JSON array), used instead
+    /// of the runner's data file; `Some("")` means a single iteration
+    pub data: Option<String>,
 }
 
 impl Default for RunOptions {
@@ -190,6 +193,7 @@ impl Default for RunOptions {
             max_body: 20 << 20,
             memory_limit: 256 << 20,
             cancel: Arc::new(AtomicBool::new(false)),
+            data: None,
         }
     }
 }
@@ -314,6 +318,7 @@ struct Engine {
     st: Rc<RefCell<State>>,
     clock: Arc<Clock>,
     script_timeout: u64,
+    data: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -429,7 +434,7 @@ impl Engine {
             Ok(())
         })?;
 
-        Ok(Self { ctx, _rt: rt, st, clock, script_timeout })
+        Ok(Self { ctx, _rt: rt, st, clock, script_timeout, data: opts.data.clone() })
     }
 
     fn slot(&self, name: &str, value: String) {
@@ -667,7 +672,11 @@ impl Engine {
         let loaded = {
             let st = self.st.borrow();
             model::load_workflow(&st.fs, path).and_then(|wf| {
-                let rows = if wf.data.is_empty() { Vec::new() } else { load_rows(&st.fs, &wf.data)? };
+                let rows = match &self.data {
+                    Some(text) => parse_rows("data", text, sniff_format(text))?,
+                    None if wf.data.is_empty() => Vec::new(),
+                    None => load_rows(&st.fs, &wf.data)?,
+                };
                 Ok((wf, rows))
             })
         };
@@ -685,9 +694,9 @@ impl Engine {
             wr.error = Some(e);
             return;
         }
-        if let Err(e) = self.run_script(&wf.scripts.pre, "workflow pre") {
+        if let Err(e) = self.run_script(&wf.scripts.pre, "runner pre") {
             wr.script_errors.push(e);
-            wr.error = Some("pre-workflow script failed".into());
+            wr.error = Some("pre-run script failed".into());
             return;
         }
         let rows: Vec<Value> = match self
@@ -816,7 +825,7 @@ impl Engine {
         self.st.borrow_mut().row = None;
 
         if !self.clock.cancelled() {
-            if let Err(e) = self.run_script(&wf.scripts.post, "workflow post") {
+            if let Err(e) = self.run_script(&wf.scripts.post, "runner post") {
                 wr.script_errors.push(e);
             }
         }
@@ -849,16 +858,54 @@ fn resolve_auth(col: &Collection, folders: &[model::Folder], req: &Option<Auth>)
 }
 
 fn load_rows(fs: &dyn Fs, path: &str) -> anyhow::Result<Vec<Value>> {
+    anyhow::ensure!(path.starts_with("data/"), "{path}: runner data must live in the data/ folder");
     let text = fs.read(path)?;
-    if path.ends_with(".csv") || path.ends_with(".tsv") {
-        let opts = if path.ends_with(".tsv") { json!({"delimiter": "\t"}) } else { json!({}) };
-        let v = parse_csv(&text, &opts).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
-        return Ok(v.as_array().cloned().unwrap_or_default());
+    let format = if path.ends_with(".tsv") {
+        DataFormat::Tsv
+    } else if path.ends_with(".csv") {
+        DataFormat::Csv
+    } else {
+        DataFormat::Json
+    };
+    parse_rows(path, &text, format)
+}
+
+#[derive(Clone, Copy)]
+enum DataFormat {
+    Csv,
+    Tsv,
+    Json,
+}
+
+/// Format of pasted data: a JSON array, TSV when the header has tabs but no commas, else CSV.
+fn sniff_format(text: &str) -> DataFormat {
+    let t = text.trim_start();
+    let header = t.lines().next().unwrap_or("");
+    if t.starts_with('[') {
+        DataFormat::Json
+    } else if header.contains('\t') && !header.contains(',') {
+        DataFormat::Tsv
+    } else {
+        DataFormat::Csv
     }
-    match serde_json::from_str::<Value>(&text)? {
-        Value::Array(a) => Ok(a),
-        _ => anyhow::bail!("{path}: workflow data must be a CSV file or a JSON array"),
+}
+
+fn parse_rows(name: &str, text: &str, format: DataFormat) -> anyhow::Result<Vec<Value>> {
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
     }
+    let opts = match format {
+        DataFormat::Json => {
+            return match serde_json::from_str::<Value>(text).map_err(|e| anyhow::anyhow!("{name}: invalid JSON: {e}"))? {
+                Value::Array(a) => Ok(a),
+                _ => anyhow::bail!("{name}: runner data must be a CSV table or a JSON array"),
+            };
+        }
+        DataFormat::Tsv => json!({"delimiter": "\t"}),
+        DataFormat::Csv => json!({}),
+    };
+    let v = parse_csv(text, &opts).map_err(|e| anyhow::anyhow!("{name}: {e}"))?;
+    Ok(v.as_array().cloned().unwrap_or_default())
 }
 
 fn has_header(h: &[(String, String)], name: &str) -> bool {
@@ -947,7 +994,7 @@ fn build_request(st: &State, x: ExportedReq, auth: Option<&Auth>) -> Result<OutR
     Ok(OutReq { method, url: url.to_string(), headers, body })
 }
 
-/// Executes a request or workflow of the collection in `fs`.
+/// Executes a request or runner of the collection in `fs`.
 /// Blocking: call it from a dedicated thread (e.g. `spawn_blocking`).
 pub fn run(fs: Box<dyn Fs>, target: Target, opts: RunOptions) -> RunOutput {
     let engine = match Engine::new(fs, &opts) {
@@ -964,4 +1011,23 @@ pub fn run(fs: Box<dyn Fs>, target: Target, opts: RunOptions) -> RunOutput {
         Err(e) => out.error = Some(format!("saving environment: {e}")),
     }
     out
+}
+
+#[cfg(test)]
+mod data_tests {
+    use super::*;
+
+    fn rows(text: &str) -> anyhow::Result<Vec<Value>> {
+        parse_rows("data", text, sniff_format(text))
+    }
+
+    #[test]
+    fn pasted_data_formats() {
+        assert_eq!(rows("name,age\nada,36\n").unwrap(), vec![json!({"name": "ada", "age": "36"})]);
+        assert_eq!(rows("name\tage\nada\t36").unwrap(), vec![json!({"name": "ada", "age": "36"})]);
+        assert_eq!(rows("  [{\"name\": \"ada\"}, {\"name\": \"grace\"}]").unwrap().len(), 2);
+        assert!(rows("").unwrap().is_empty());
+        assert!(rows("[{\"name\": ").is_err());
+        assert!(rows("[").is_err());
+    }
 }

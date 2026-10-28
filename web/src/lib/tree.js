@@ -1,6 +1,6 @@
 // Derives the sidebar structure from the flat file map.
 import YAML from 'yaml';
-import { FLOW_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename, listEnvs } from './format.js';
+import { RUNNER_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename, listEnvs } from './format.js';
 
 const metaCache = new Map(); // text -> { name, method }
 
@@ -48,8 +48,8 @@ export function buildTree(files) {
         f.requests.push({ path, ...meta(text, basename(path).slice(0, -REQ_EXT.length)) });
         continue;
       }
-    } else if (path.startsWith('workflows/') && path.endsWith(FLOW_EXT)) {
-      workflows.push({ path, ...meta(text, basename(path).slice(0, -FLOW_EXT.length)) });
+    } else if (path.startsWith('runners/') && path.endsWith(RUNNER_EXT)) {
+      workflows.push({ path, ...meta(text, basename(path).slice(0, -RUNNER_EXT.length)) });
       continue;
     } else if (isEnvFile(path)) {
       continue;

@@ -80,8 +80,8 @@
 
     <div class="section">
       <div class="section-head">
-        <span>Workflows</span>
-        <span class="actions"><button class="icon" title="New workflow" onclick={act.newWorkflow}>＋</button></span>
+        <span>Runners</span>
+        <span class="actions"><button class="icon" title="New runner" onclick={act.newWorkflow}>＋</button></span>
       </div>
       {#each tree.workflows as w (w.path)}
         <div class="item" class:selected={sel('workflow', w.path)}>

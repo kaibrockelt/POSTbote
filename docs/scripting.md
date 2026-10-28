@@ -62,7 +62,7 @@ collection.name; collection.vars;
 
 `env.set` persists to the private file of the active environment (`environments/<name>.env`,
 gitignored) when the run ends; `env.get` sees shared and private values merged. `vars` hold any JSON value and
-live for one run (a request run, or a whole workflow) — the right place for tokens you do not want
+live for one run (a request run, or a whole runner) — the right place for tokens you do not want
 on disk.
 
 ## Files, CSV, utilities
@@ -91,10 +91,10 @@ Files written by scripts appear in the collection immediately (browser collectio
 the browser, disk collections on disk). Paths are relative to the collection root; `..` and `.git`
 are rejected.
 
-## Workflows (`wf`)
+## Runners (`wf`)
 
 ```js
-// pre-workflow: decide what to iterate over
+// pre-run: decide what to iterate over
 wf.rows = csv.parse(fs.read('data/users.csv')).filter(u => u.active === 'true');
 
 // in step scripts / conditions
@@ -104,8 +104,8 @@ wf.results;     // [{ iteration, step, status, passed, error, timeMs }, …]
 wf.last;        // response of the previous step
 wf.goto('verify');    // continue with another step (after this one)
 wf.skipIteration();   // next data row
-wf.stop('reason');    // end the workflow (post-workflow script still runs)
+wf.stop('reason');    // end the run (post-run script still runs)
 
-// post-workflow: write a report
+// post-run: write a report
 fs.write('out/report.json', JSON.stringify(wf.results, null, 2));
 ```

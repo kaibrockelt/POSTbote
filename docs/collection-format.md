@@ -67,11 +67,11 @@ seq: 10                       # optional sort order in the sidebar
 Auth types: `bearer` (`token`), `basic` (`username`, `password`), `apikey` (`key`, `value`,
 `in: header|query`). An explicit `Authorization` header always wins over `auth`.
 
-## Workflows: `workflows/**/<name>.flow.yaml`
+## Runners: `runners/**/<name>.runner.yaml`
 
 ```yaml
 name: Onboard users
-data: data/users.csv          # CSV with header row, or a JSON array; one iteration per row
+data: data/users.csv          # in data/: CSV/TSV with header row, or a JSON array; one iteration per row
 settings:
   stopOnFailure: true         # stop when a step has an error, script error or failed test
   delayMs: 0                  # pause between steps
@@ -114,8 +114,8 @@ shared file; a tint line in the private file overrides it for you alone.
 
 `{{name}}` works in URL, params, headers, body, form fields and auth. Lookup order:
 
-1. runtime `vars` (set by scripts, live for one run/workflow)
-2. the current workflow data row
+1. runtime `vars` (set by scripts, live for one run/runner)
+2. the current runner data row
 3. the active environment: private values (`<name>.env`)
 4. the active environment: shared values (`<name>.env.pub`)
 5. folder variables (innermost first)
@@ -126,5 +126,5 @@ Unknown names are left as-is; an unresolved variable in the URL is reported as a
 
 ## Script order
 
-For each request: collection pre → folder pre (outer → inner) → request pre → workflow step pre,
-then the request is sent, then collection post → folder post → request post → workflow step post.
+For each request: collection pre → folder pre (outer → inner) → request pre → runner step pre,
+then the request is sent, then collection post → folder post → request post → runner step post.

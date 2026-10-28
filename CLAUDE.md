@@ -1,6 +1,6 @@
 # POSTBote
 
-Offline-first API client (Postman/Bruno alternative). Collections, environments, workflows and scripts are plain text files, versionable with git. No cloud.
+Offline-first API client (Postman/Bruno alternative). Collections, environments, runners and scripts are plain text files, versionable with git. No cloud.
 
 ## Layout
 
@@ -12,7 +12,7 @@ Offline-first API client (Postman/Bruno alternative). Collections, environments,
 
 ## Collection format (summary)
 
-`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `workflows/**/<name>.flow.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > folder > collection. Details: `docs/collection-format.md`, `docs/scripting.md`.
+`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `runners/**/<name>.runner.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > folder > collection. Details: `docs/collection-format.md`, `docs/scripting.md`.
 
 ## Commands
 
@@ -43,4 +43,4 @@ Full list of planned topics: `docs/plans/roadmap.md`.
 
 `docs/plans/import-export.md` – phase 1: cURL paste import with secret detection, Postman v2.1, OpenAPI. Open questions listed there.
 
-Terminology: today's "workflows" (`*.flow.yaml` request chains) are to be renamed **"Runner"**; "workflows" will mean the planned node-based builder (Node-RED/n8n style) in `docs/plans/node-workflows.md` (also: gear icon → Settings page, env dropdown alignment). Not implemented yet; open questions listed there.
+Terminology: request chains over data rows are **runners** (`runners/**/*.runner.yaml`; internally still `workflow`: kind, `Target::Workflow`, `WorkflowEditor`, script object `wf`). "Workflows" means the planned node-based builder (Node-RED/n8n style) in `docs/plans/node-workflows.md`. Not implemented yet; open questions listed there.
