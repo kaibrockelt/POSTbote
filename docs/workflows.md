@@ -19,6 +19,12 @@ edges:
   - { from: save, out: out, to: done }
 ```
 
+## Inputs in requests
+
+A request can use `{{input}}` or `{{input.field}}` (nested: `{{input.user.name}}`). Its **Inputs** tab
+appears as soon as such a placeholder is used and holds sample values (saved as `inputs:` in the request
+file) for sending it on its own; when a workflow calls the request, the node input replaces them.
+
 ## Values and ports
 
 - A value has a type: `json`, `csv`, `text`, `file` (name, size, base64) or `none`. A node's `input`
@@ -31,7 +37,7 @@ edges:
 
 | Type | Does |
 | --- | --- |
-| `manual` | Starter with a play button; its output is the payload (`payloadType` json or text). |
+| `manual` | Starter with a play button; its output is the payload (`payloadType` json, csv — rows with a header become JSON objects — or text). |
 | `fromWorkflow` | Starter used when another workflow calls this one; output = the caller's input. |
 | `call` | Runs a collection request. `{{input}}` / `{{input.field}}` work anywhere in the request; top-level fields of a JSON input override folder and collection variables of the same name, never environment values. `useFolder: false` ignores folder variables, headers, auth and scripts. Output = response body (JSON if it parses, else text). |
 | `compute` | JavaScript with `input` (same sandbox as request scripts: `env`, `vars`, `fs`, `csv`, `util`); `return` gives the output, `throw` goes to `err`. |

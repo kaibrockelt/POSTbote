@@ -323,3 +323,19 @@ edges:
     let g = run(mk(), Target::Graph("workflows/loop.workflow.yaml".into(), None), opts()).graph.unwrap();
     assert!(g.error.as_deref().unwrap_or("").contains("nested deeper"), "{:?}", g.error);
 }
+
+#[test]
+fn request_inputs_sample_values_and_workflow_override() {
+    let base = echo_server();
+    let req = "name: User\nurl: \"{{baseUrl}}/users/{{input.id}}/{{input.org.name}}\"\ninputs:\n  id: \"7\"\n  org.name: acme\n";
+    let flow = "nodes:\n  - { id: s, type: manual, payloadType: csv, payload: \"id,org\\n42,x\" }\n  - { id: e, type: forEach, child: c }\n  - { id: c, type: call, request: requests/user.req.yaml }\n  - { id: r, type: return }\nedges:\n  - { from: s, out: out, to: e }\n  - { from: e, out: out, to: r }\n";
+    let mk = || collection(&base, &[("requests/user.req.yaml", req), ("workflows/f.workflow.yaml", flow)]);
+    // on its own: the sample inputs
+    let r = run(mk(), Target::Request("requests/user.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?}", r.error);
+    assert!(r.request.unwrap().url.ends_with("/users/7/acme"));
+    // from a workflow (CSV start → JSON rows): the node input replaces them (org.name missing → unresolved)
+    let g = run(mk(), Target::Graph("workflows/f.workflow.yaml".into(), None), opts()).graph.unwrap();
+    let call = g.steps.iter().find(|s| s.kind == "call").unwrap();
+    assert!(call.error.as_deref().unwrap_or("").contains("{{input.org.name}}"), "{:?}", call.error);
+}

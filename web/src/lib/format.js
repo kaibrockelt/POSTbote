@@ -125,6 +125,7 @@ export function parseRequest(text) {
       scripts: normScripts(doc.scripts),
       docs: str(doc.docs),
       seq: doc.seq,
+      inputs: Object.fromEntries(Object.entries(doc.inputs && typeof doc.inputs === 'object' ? doc.inputs : {}).map(([k, v]) => [k, str(v)])),
     },
   };
 }
@@ -146,6 +147,7 @@ export function serializeRequest(r) {
       scripts: cleanScripts(r.scripts),
       docs: r.docs,
       seq: r.seq,
+      inputs: prune(r.inputs || {}),
     }),
   );
 }

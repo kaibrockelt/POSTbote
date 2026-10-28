@@ -227,8 +227,8 @@
           {/if}
 
           {#if node.type === 'manual'}
-            <label><span>Payload</span><select bind:value={node.payloadType}><option value="json">JSON</option><option value="text">text</option></select></label>
-            <CodeArea bind:value={node.payload} rows={8} placeholder={'{ "ids": [1, 2, 3] }'} />
+            <label><span>Payload</span><select bind:value={node.payloadType}><option value="json">JSON</option><option value="csv">CSV (header row → JSON rows)</option><option value="text">text</option></select></label>
+            <CodeArea bind:value={node.payload} rows={8} placeholder={node.payloadType === 'csv' ? 'id,name\n1,ada\n2,grace' : '[\n  { "id": "kai" },\n  { "id": "kaisen" }\n]'} />
           {:else if node.type === 'call'}
             <label>
               <span>Request</span>

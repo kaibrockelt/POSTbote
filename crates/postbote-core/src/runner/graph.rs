@@ -218,6 +218,8 @@ impl Engine {
                 }
                 match s("payloadType").as_str() {
                     "text" => out(Data::text(payload)),
+                    // CSV with a header row: the rows become JSON objects (ready for forEach)
+                    "csv" => parse_csv(&payload, &json!({})).map(Data::json).and_then(out),
                     _ => serde_json::from_str(&payload).map(|v| Data::json(v)).map_err(|e| format!("payload is not valid JSON: {e}")).and_then(out),
                 }
             }

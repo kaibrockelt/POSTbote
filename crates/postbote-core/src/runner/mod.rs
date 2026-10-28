@@ -267,12 +267,39 @@ struct State {
     input_vars: BTreeMap<String, String>,
     /// workflow call node with "use folder settings" off
     skip_folders: bool,
+    /// graph_input came from the request's own sample inputs (cleared after it)
+    input_from_request: bool,
     tests: Vec<TestResult>,
     logs: Vec<LogEntry>,
     source: String,
     slots: HashMap<String, String>,
     http: Http,
     clock: Arc<Clock>,
+}
+
+/// `{"user.name": "ada"}` → `{"user": {"name": "ada"}}`; `_` is the whole input.
+fn inputs_value(inputs: &BTreeMap<String, String>) -> Value {
+    if let Some(whole) = inputs.get("_") {
+        return serde_json::from_str(whole).unwrap_or_else(|_| Value::String(whole.clone()));
+    }
+    fn put(target: &mut Value, path: &[&str], v: &str) {
+        if !target.is_object() {
+            *target = Value::Object(Map::new());
+        }
+        let obj = target.as_object_mut().expect("object");
+        match path {
+            [last] => {
+                obj.insert(last.to_string(), Value::String(v.to_string()));
+            }
+            [first, rest @ ..] => put(obj.entry(first.to_string()).or_insert(Value::Null), rest, v),
+            [] => {}
+        }
+    }
+    let mut root = Value::Object(Map::new());
+    for (key, v) in inputs {
+        put(&mut root, &key.split('.').collect::<Vec<_>>(), v);
+    }
+    root
 }
 
 fn var_text(v: &Value) -> String {
@@ -433,6 +460,7 @@ impl Engine {
             graph_input: None,
             input_vars: BTreeMap::new(),
             skip_folders: false,
+            input_from_request: false,
             tests: Vec::new(),
             logs: Vec::new(),
             source: String::new(),
@@ -534,6 +562,13 @@ impl Engine {
         let start = Instant::now();
         let mut res = RequestResult { path: path.to_string(), ..Default::default() };
         self.exec_request_inner(path, step, &mut res);
+        {
+            let mut st = self.st.borrow_mut();
+            if st.input_from_request {
+                st.graph_input = None;
+                st.input_from_request = false;
+            }
+        }
         let (tests, logs) = self.drain();
         res.tests.extend(tests);
         res.logs.extend(logs);
@@ -554,6 +589,14 @@ impl Engine {
                 return;
             }
         };
+        // run on its own: the request's sample inputs stand in for a workflow node input
+        {
+            let mut st = self.st.borrow_mut();
+            if st.graph_input.is_none() && !req.inputs.is_empty() {
+                st.graph_input = Some(inputs_value(&req.inputs));
+                st.input_from_request = true;
+            }
+        }
         res.name = if req.name.is_empty() {
             path.rsplit('/').next().unwrap_or(path).trim_end_matches(model::REQUEST_EXT).to_string()
         } else {

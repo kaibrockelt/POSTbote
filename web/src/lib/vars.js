@@ -25,8 +25,31 @@ export const SOURCE_LABEL = {
   env: 'Environment variable (private)',
   runtime: 'Set at runtime (script or runner data)',
   builtin: 'Built-in dynamic value',
+  input: 'Workflow input (sample value from the Inputs tab)',
   missing: 'Unresolved',
 };
+
+const INPUT_RE = /\{\{\s*input(?:\.([^{}\s]+))?\s*\}\}/g;
+
+/** Keys of {{input}} / {{input.x}} placeholders used in a request doc ('_' = the whole input). */
+export function inputKeys(doc) {
+  const keys = new Set();
+  for (const m of JSON.stringify(doc ?? {}).matchAll(INPUT_RE)) keys.add(m[1] || '_');
+  return [...keys];
+}
+
+/** Adds the request's sample inputs (and used input placeholders) to a scope. */
+export function withInputs(scope, doc) {
+  const inputs = doc?.inputs || {};
+  const keys = new Set([...inputKeys(doc), ...Object.keys(inputs)]);
+  if (!keys.size) return scope;
+  const m = new Map(scope);
+  for (const k of keys) {
+    const name = k === '_' ? 'input' : `input.${k}`;
+    m.set(name, { name, value: inputs[k] ?? '', source: 'input', label: 'Inputs tab' });
+  }
+  return m;
+}
 
 function ancestors(path) {
   const out = [];
@@ -108,6 +131,7 @@ export function tokenize(text, scope) {
 export function interpolate(text, scope) {
   return String(text ?? '').replace(VAR_RE, (m, n) => {
     const v = scope.get(n.trim());
+    if (v?.source === 'input') return v.value === '' ? m : v.value;
     return v && ['collection', 'folder', 'envpub', 'env'].includes(v.source) ? v.value : m;
   });
 }

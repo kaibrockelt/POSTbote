@@ -2,7 +2,7 @@
 // and folders, params, auth and variables applied. Pre-request scripts are
 // not executed here (they may have side effects).
 import { MANIFEST, FOLDER_FILE, parseCollection, parseFolder } from './format.js';
-import { variableScope, interpolate, ancestors } from './vars.js';
+import { variableScope, interpolate, ancestors, withInputs } from './vars.js';
 
 const enabled = (kvs) => (kvs || []).filter((r) => r.key && !r.disabled);
 
@@ -17,7 +17,7 @@ function b64(s) {
 const enc = (s) => encodeURIComponent(s).replace(/%7B%7B(.*?)%7D%7D/g, (_, n) => `{{${decodeURIComponent(n)}}}`);
 
 export function effectiveRequest(files, env, reqPath, doc, { resolve = true } = {}) {
-  const scope = variableScope(files, env, reqPath);
+  const scope = withInputs(variableScope(files, env, reqPath), doc);
   const I = (s) => (resolve ? interpolate(s, scope) : String(s ?? ''));
   const col = parseCollection(files[MANIFEST] || '').doc;
   const folders = ancestors(reqPath)
