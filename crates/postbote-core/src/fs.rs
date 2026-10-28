@@ -29,6 +29,10 @@ pub fn is_not_found(e: &anyhow::Error) -> bool {
 
 pub trait Fs: Send {
     fn read(&self, p: &str) -> Result<String>;
+    /// Raw bytes, e.g. for binary request bodies; text-only stores return the text.
+    fn read_bytes(&self, p: &str) -> Result<Vec<u8>> {
+        Ok(self.read(p)?.into_bytes())
+    }
     fn write(&mut self, p: &str, content: &str) -> Result<()>;
     fn delete(&mut self, p: &str) -> Result<()>;
     fn rename(&mut self, from: &str, to: &str) -> Result<()>;
@@ -227,6 +231,16 @@ impl Fs for DiskFs {
         }
     }
 
+    fn read_bytes(&self, p: &str) -> Result<Vec<u8>> {
+        let c = clean(p)?;
+        let full = self.resolve(&c)?;
+        match std::fs::read(&full) {
+            Ok(b) => Ok(b),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(NotFound(c).into()),
+            Err(e) => Err(anyhow!(e).context(c)),
+        }
+    }
+
     fn write(&mut self, p: &str, content: &str) -> Result<()> {
         let c = clean(p)?;
         if content.len() > MAX_FILE_SIZE {
@@ -275,6 +289,9 @@ impl Fs for Box<dyn Fs> {
     fn read(&self, p: &str) -> Result<String> {
         (**self).read(p)
     }
+    fn read_bytes(&self, p: &str) -> Result<Vec<u8>> {
+        (**self).read_bytes(p)
+    }
     fn write(&mut self, p: &str, content: &str) -> Result<()> {
         (**self).write(p, content)
     }
@@ -307,6 +324,9 @@ impl<F: Fs> Tracking<F> {
 impl<F: Fs> Fs for Tracking<F> {
     fn read(&self, p: &str) -> Result<String> {
         self.inner.read(p)
+    }
+    fn read_bytes(&self, p: &str) -> Result<Vec<u8>> {
+        self.inner.read_bytes(p)
     }
     fn write(&mut self, p: &str, content: &str) -> Result<()> {
         self.inner.write(p, content)?;
@@ -355,6 +375,12 @@ impl<F: Fs> Fs for Overlay<F> {
         match self.over.get(&clean(p)?) {
             Some(v) => Ok(v.clone()),
             None => self.inner.read(p),
+        }
+    }
+    fn read_bytes(&self, p: &str) -> Result<Vec<u8>> {
+        match self.over.get(&clean(p)?) {
+            Some(v) => Ok(v.clone().into_bytes()),
+            None => self.inner.read_bytes(p),
         }
     }
     fn write(&mut self, p: &str, content: &str) -> Result<()> {

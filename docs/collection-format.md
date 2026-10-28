@@ -50,13 +50,16 @@ headers:
 auth:
   type: inherit               # inherit | none | bearer | basic | apikey
 body:
-  type: json                  # none | json | text | xml | form | multipart
+  type: json                  # none | json | text | xml | form | multipart | file
   content: |
     {"name": "{{name}}"}
   # form / multipart use fields instead of content:
   # fields:
   #   - key: avatar
   #     file: data/avatar.svg   # multipart: send a collection file
+  # file sends one collection file as the raw body (binary is fine, Content-Type from the extension):
+  #   type: file
+  #   file: data/photo.png
 scripts:
   pre: |
   post: |

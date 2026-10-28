@@ -63,8 +63,10 @@ export function effectiveRequest(files, env, reqPath, doc, { resolve = true } = 
   if (query.length) url += (url.includes('?') ? '&' : '?') + query.map(([k, v]) => `${enc(k)}=${enc(v)}`).join('&');
 
   const type = doc.body?.type || 'none';
-  const body = { type, content: '', fields: [] };
-  if (type === 'form' || type === 'multipart') {
+  const body = { type, content: '', fields: [], file: '' };
+  if (type === 'file' && doc.body?.file) {
+    body.file = I(doc.body.file); // sent as raw bytes; content type from the extension
+  } else if (type === 'form' || type === 'multipart') {
     body.fields = enabled(doc.body.fields).map((f) => ({ key: I(f.key), value: I(f.value), file: f.file ? I(f.file) : '' }));
   } else if (type !== 'none' && doc.body?.content) {
     body.content = I(doc.body.content);

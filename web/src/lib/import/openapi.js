@@ -348,7 +348,11 @@ function convertRequestBody(ctx, rb, where) {
     if (typeof ex !== 'string' && xml) ctx.warnings.add(`${where}: XML body has no example and was left empty`);
     return { type: xml ? 'xml' : 'text', content: typeof ex === 'string' ? ex : '', fields: [] };
   }
-  if (types.length) ctx.warnings.add(`${where}: request body type ${types[0]} is not supported`);
+  // anything else (octet-stream, images, PDFs, …) is sent as a raw file
+  if (types.length) {
+    ctx.warnings.add(`${where}: ${types[0]} body – choose the file to send`);
+    return { type: 'file', content: '', fields: [], file: '' };
+  }
   return none;
 }
 

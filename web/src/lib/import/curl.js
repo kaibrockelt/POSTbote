@@ -135,6 +135,7 @@ export function parseCurl(text) {
   let get = false;
   let json = false;
   let auth = null;
+  let upload = ''; // --data-binary @file / -T file: sent as the raw file
 
   const args = expandShort(words.slice(1));
   for (let i = 0; i < args.length; i++) {
@@ -167,7 +168,8 @@ export function parseCurl(text) {
       case '--data-binary':
       case '--data-raw':
         if (a !== '--data-raw' && val.startsWith('@')) {
-          warnings.push(`Body from file ${val.slice(1)} is not imported; paste its content into the body`);
+          upload = val.slice(1);
+          warnings.push(`Body file ${upload} must exist in the collection (path relative to the collection folder)`);
           break;
         }
         data.push(a === '-d' || a === '--data' || a === '--data-ascii' ? val.replace(/[\r\n]/g, '') : val);
@@ -240,7 +242,8 @@ export function parseCurl(text) {
         break;
       case '-T':
       case '--upload-file':
-        warnings.push(`Upload of file ${val} is not imported`);
+        upload = val;
+        warnings.push(`Body file ${upload} must exist in the collection (path relative to the collection folder)`);
         method ||= 'PUT';
         break;
       default:
@@ -296,7 +299,10 @@ export function parseCurl(text) {
   // body
   let body = { type: 'none', content: '', fields: [] };
   const ct = (header('content-type')?.value || (json ? 'application/json' : '')).toLowerCase();
-  if (form.length) {
+  if (upload && !data.length && !form.length) {
+    body = { type: 'file', content: '', fields: [], file: upload };
+    if (/^application\/octet-stream$/i.test(ct)) drop('content-type');
+  } else if (form.length) {
     body = { type: 'multipart', content: '', fields: form };
     drop('content-type'); // the boundary is generated when sending
   } else if (data.length) {
@@ -333,7 +339,7 @@ export function parseCurl(text) {
   }
   if (noisy) warnings.push(`${noisy} browser header${noisy > 1 ? 's were' : ' was'} imported disabled (sec-*, priority, …)`);
 
-  method ||= data.length || form.length ? 'POST' : 'GET';
+  method ||= data.length || form.length || upload ? 'POST' : 'GET';
   return {
     doc: { method, url, params, headers, auth: auth || { type: 'inherit' }, body },
     warnings,

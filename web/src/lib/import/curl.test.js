@@ -90,3 +90,11 @@ test('errors', () => {
   assert.throws(() => parseCurl('curl -H "Accept: x"'), /No URL/);
   assert.throws(() => parseCurl('curl https://x.io -X'), /needs a value/);
 });
+
+test('binary uploads become file bodies', () => {
+  const a = parseCurl(`curl -X POST https://x.io/up --data-binary @data/photo.png -H 'Content-Type: image/png'`).doc;
+  assert.deepEqual([a.method, a.body.type, a.body.file], ['POST', 'file', 'data/photo.png']);
+  assert.equal(hv(a)['Content-Type'], 'image/png');
+  const t = parseCurl(`curl -T backup.zip https://x.io/files/backup.zip`).doc;
+  assert.deepEqual([t.method, t.body.type, t.body.file], ['PUT', 'file', 'backup.zip']);
+});

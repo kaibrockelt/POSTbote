@@ -225,3 +225,38 @@ fn script_limits() {
     let r = run(mk(), Target::Request("requests/syntax.req.yaml".into()), opts()).request.unwrap();
     assert!(r.script_errors[0].contains("SyntaxError"), "{:?}", r.script_errors);
 }
+
+#[test]
+fn file_body_sends_the_file() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
+            ("data/upload.bin", "raw-bytes"),
+            (
+                "requests/upload.req.yaml",
+                r#"name: Upload
+method: PUT
+url: "{{baseUrl}}/upload"
+body:
+  type: file
+  file: data/upload.bin
+scripts:
+  post: |
+    const j = res.json();
+    test('body', () => expect(j.body).toBe('raw-bytes'));
+    test('content type', () => expect(j.headers['content-type']).toBe('application/octet-stream'));
+"#,
+            ),
+            ("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n"),
+        ],
+    );
+    let r = run(fs, Target::Request("requests/upload.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
+    assert_eq!(r.request.unwrap().body, "<9 bytes of binary data>");
+
+    let fs = collection(&base, &[("requests/missing.req.yaml", "name: Missing\nmethod: PUT\nurl: \"{{baseUrl}}/x\"\nbody:\n  type: file\n  file: data/nope.bin\n")]);
+    let r = run(fs, Target::Request("requests/missing.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.as_deref().unwrap_or("").contains("body file"), "{:?}", r.error);
+}

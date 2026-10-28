@@ -554,7 +554,8 @@ impl Engine {
             "name": res.name,
             "method": if req.method.is_empty() { "GET".to_string() } else { req.method.to_uppercase() },
             "url": req.url,
-            "body": req.body.content,
+            // a file body exposes its path to scripts (req.body)
+            "body": if req.body.kind == "file" { &req.body.file } else { &req.body.content },
             "bodyType": req.body.kind,
             "headers": headers,
             "params": model::enabled(&req.params).map(|p| json!({"key": p.key, "value": p.value})).collect::<Vec<_>>(),
@@ -606,6 +607,7 @@ impl Engine {
             headers: out.headers.clone(),
             body: match &out.body {
                 OutBody::Raw(s) => s.clone(),
+                OutBody::Bytes(b) => format!("<{} bytes of binary data>", b.len()),
                 OutBody::Form(f) => f.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("&"),
                 OutBody::Multipart(p) => p.iter().map(|p| format!("{}={}", p.name, p.file.as_ref().map(|f| format!("@{}", f.0)).unwrap_or(p.value.clone()))).collect::<Vec<_>>().join("\n"),
                 OutBody::None => String::new(),
@@ -968,12 +970,23 @@ fn build_request(st: &State, x: ExportedReq, auth: Option<&Auth>) -> Result<OutR
                     None
                 } else {
                     let p = st.interp(&f.file);
-                    let content = st.fs.read(&p).map_err(|e| format!("multipart field {}: {e:#}", f.key))?;
+                    let content = st.fs.read_bytes(&p).map_err(|e| format!("multipart field {}: {e:#}", f.key))?;
                     Some((p.rsplit('/').next().unwrap_or(&p).to_string(), content))
                 };
                 parts.push(Part { name: st.interp(&f.key), value: st.interp(&f.value), file });
             }
             OutBody::Multipart(parts)
+        }
+        "file" => {
+            let p = st.interp(&x.body);
+            if p.trim().is_empty() {
+                return Err("body type file: choose a file of the collection".into());
+            }
+            let bytes = st.fs.read_bytes(&p).map_err(|e| format!("body file: {e:#}"))?;
+            if !has_header(&headers, "content-type") {
+                headers.push(("Content-Type".into(), mime_of(&p).into()));
+            }
+            OutBody::Bytes(bytes)
         }
         _ if x.body.is_empty() => OutBody::None,
         _ => {
@@ -992,6 +1005,24 @@ fn build_request(st: &State, x: ExportedReq, auth: Option<&Auth>) -> Result<OutR
         }
     };
     Ok(OutReq { method, url: url.to_string(), headers, body })
+}
+
+/// Content type for a body file by its extension (the header can override it).
+fn mime_of(path: &str) -> &'static str {
+    match path.rsplit('.').next().unwrap_or("").to_ascii_lowercase().as_str() {
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "txt" | "csv" => "text/plain; charset=utf-8",
+        "html" | "htm" => "text/html; charset=utf-8",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        _ => "application/octet-stream",
+    }
 }
 
 /// Executes a request or runner of the collection in `fs`.

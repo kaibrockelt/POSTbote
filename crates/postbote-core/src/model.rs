@@ -58,11 +58,13 @@ pub struct Auth {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Body {
-    /// none | json | text | xml | form | multipart
+    /// none | json | text | xml | form | multipart | file
     #[serde(rename = "type")]
     pub kind: String,
     pub content: String,
     pub fields: Vec<Kv>,
+    /// collection-relative path sent as the raw body (type file)
+    pub file: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
