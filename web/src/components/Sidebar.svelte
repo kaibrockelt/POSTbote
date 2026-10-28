@@ -2,14 +2,13 @@
   import FolderPlusIcon from './FolderPlusIcon.svelte';
   import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
-  import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, askRemove, fail, toast } from '../lib/state.svelte.js';
+  import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, askRemove, toggleCollapsed, contentOf, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
   import { dnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
-  import { envPublicPath, envPrivatePath } from '../lib/format.js';
+  import { envPublicPath, envPrivatePath, parseEnv } from '../lib/format.js';
   import * as act from '../lib/actions.js';
 
   let { onNewWorkspace } = $props();
-  let collapsed = $state({});
   let filter = $state('');
 
   const tree = $derived(buildTree(app.files));
@@ -17,6 +16,12 @@
   const visibleTree = $derived(filtering ? filterTree(tree.root, filter) : tree.root);
   const folders = $derived(folderList(tree.root));
   const sel = (kind, path) => app.selected?.kind === kind && app.selected?.path === path;
+  // sections fold away their items; filtering always shows the requests
+  const open = (name) => !app.collapsed[`section:${name}`] || (name === 'requests' && filtering);
+  // which parts of an environment define variables (`token=` counts, a file with only comments does not)
+  const hasValues = (path) => parseEnv(contentOf(path)).length > 0;
+  const envTag = (name) => [hasValues(envPublicPath(name)) && 'shared', hasValues(envPrivatePath(name)) && 'private'].filter(Boolean).join(' + ') || 'empty';
+  const countRequests = (f) => f.requests.length + f.folders.reduce((n, sub) => n + countRequests(sub), 0);
 
   async function switchWs(e) {
     const ws = app.workspaces.find((w) => w.id === e.currentTarget.value);
@@ -77,24 +82,32 @@
       ondrop={(e) => drop(e, tree.root.path)}
     >
       <div class="section-head">
-        <span>Requests</span>
+        <button class="head-toggle" aria-expanded={open('requests')} onclick={() => toggleCollapsed('section:requests')}>
+          <span class="caret">{open('requests') ? '▾' : '▸'}</span>Requests
+          {#if !open('requests')}<span class="count">{countRequests(tree.root)}</span>{/if}
+        </button>
         <span class="actions">
           <button class="icon" title="New request" onclick={() => act.newRequest()}>＋</button>
           <button class="icon" title="New folder" onclick={() => act.newFolder()}><FolderPlusIcon /></button>
         </span>
       </div>
-      <input class="filter" placeholder="Filter: name, method, URL…" bind:value={filter} onkeydown={(e) => e.key === 'Escape' && (filter = '')} />
-      <TreeFolder folder={visibleTree} bind:collapsed {folders} forceOpen={filtering} />
-      {#if filtering && !visibleTree.requests.length && !visibleTree.folders.length}<p class="hint pad">No request matches “{filter}”.</p>{/if}
-      {#if !tree.root.requests.length && !tree.root.folders.length}<p class="hint pad">No requests yet.</p>{/if}
+      {#if open('requests')}
+        <input class="filter" placeholder="Filter: name, method, URL…" bind:value={filter} onkeydown={(e) => e.key === 'Escape' && (filter = '')} />
+        <TreeFolder folder={visibleTree} {folders} forceOpen={filtering} />
+        {#if filtering && !visibleTree.requests.length && !visibleTree.folders.length}<p class="hint pad">No request matches “{filter}”.</p>{/if}
+        {#if !tree.root.requests.length && !tree.root.folders.length}<p class="hint pad">No requests yet.</p>{/if}
+      {/if}
     </div>
 
     <div class="section">
       <div class="section-head">
-        <span>Runners</span>
+        <button class="head-toggle" aria-expanded={open('runners')} onclick={() => toggleCollapsed('section:runners')}>
+          <span class="caret">{open('runners') ? '▾' : '▸'}</span>Runners
+          {#if !open('runners')}<span class="count">{tree.workflows.length}</span>{/if}
+        </button>
         <span class="actions"><button class="icon" title="New runner" onclick={act.newWorkflow}>＋</button></span>
       </div>
-      {#each tree.workflows as w (w.path)}
+      {#each open('runners') ? tree.workflows : [] as w (w.path)}
         <div class="item" class:selected={sel('workflow', w.path)} role="treeitem" aria-selected={sel('workflow', w.path)} tabindex="-1"
           oncontextmenu={(ev) => openMenu(ev, [
             { label: 'Open', action: () => select({ kind: 'workflow', path: w.path }) },
@@ -117,10 +130,13 @@
 
     <div class="section">
       <div class="section-head">
-        <span>Environments</span>
+        <button class="head-toggle" aria-expanded={open('envs')} onclick={() => toggleCollapsed('section:envs')}>
+          <span class="caret">{open('envs') ? '▾' : '▸'}</span>Environments
+          {#if !open('envs')}<span class="count">{tree.envs.length}</span>{/if}
+        </button>
         <span class="actions"><button class="icon" title="New environment" onclick={act.newEnv}>＋</button></span>
       </div>
-      {#each tree.envs as e (e.name)}
+      {#each open('envs') ? tree.envs : [] as e (e.name)}
         <div class="item" class:selected={sel('env', e.name)} role="treeitem" aria-selected={sel('env', e.name)} tabindex="-1"
           oncontextmenu={(ev) => openMenu(ev, [
             { label: app.env === e.name ? 'Deactivate' : 'Activate', action: () => setEnv(app.env === e.name ? '' : e.name) },
@@ -132,7 +148,7 @@
             <span class="dot" class:active={app.env === e.name}></span>
             {e.name}
             {#if isDirty(envPublicPath(e.name)) || isDirty(envPrivatePath(e.name))}<span class="unsaved" title="unsaved changes">●</span>{/if}
-            <span class="tag" title="shared values (committed) / private overrides (gitignored)">{[e.pub && 'shared', e.priv && 'private'].filter(Boolean).join(' + ')}</span>
+            <span class="tag" title="defines shared variables (committed) / private variables (gitignored)">{envTag(e.name)}</span>
           </button>
           <span class="actions">
             <button class="icon" title="Rename" onclick={() => act.renameEnv(e.name)}>✎</button>
@@ -195,6 +211,40 @@
     letter-spacing: 0.06em;
     color: var(--fg-3);
     font-weight: 600;
+  }
+  .head-toggle {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+  .head-toggle:hover {
+    color: var(--fg-2);
+  }
+  .head-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+  /* same size as the folder twisties below */
+  .caret {
+    width: 14px;
+    font-size: 13px;
+    line-height: 1;
+    text-align: center;
+  }
+  .count {
+    font-weight: normal;
+    letter-spacing: 0;
+    text-transform: none;
+    background: var(--bg-3);
+    border-radius: 8px;
+    padding: 0 6px;
+    margin-left: 2px;
   }
   .filter {
     margin: 2px 6px 6px;

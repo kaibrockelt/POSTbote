@@ -2,7 +2,7 @@
   import FolderPlusIcon from './FolderPlusIcon.svelte';
   import Icon from './Icon.svelte';
   import TreeFolder from './TreeFolder.svelte';
-  import { app, select, isDirty, openMenu } from '../lib/state.svelte.js';
+  import { app, select, isDirty, openMenu, toggleCollapsed } from '../lib/state.svelte.js';
   import {
     newRequest,
     newFolder,
@@ -18,8 +18,8 @@
   import { dnd, dragStart, dragEnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
 
   // folders: all request folders ({ path, label }) for "Move to"; forceOpen while filtering
-  let { folder, depth = 0, collapsed = $bindable({}), folders = [], forceOpen = false } = $props();
-  const isOpen = $derived(forceOpen || !collapsed[folder.path]);
+  let { folder, depth = 0, folders = [], forceOpen = false } = $props();
+  const isOpen = $derived(forceOpen || !app.collapsed[folder.path]);
   const sel = (kind, path) => app.selected?.kind === kind && app.selected?.path === path;
   const parentOf = (p) => p.slice(0, p.lastIndexOf('/'));
   const short = (m) => (m === 'DELETE' ? 'DEL' : m === 'OPTIONS' ? 'OPT' : m);
@@ -78,7 +78,7 @@
     ondrop={(e) => drop(e, folder.path)}
     oncontextmenu={(e) => folderMenu(e, folder)}
   >
-    <button class="twisty" onclick={() => (collapsed[folder.path] = isOpen)} aria-label="toggle">{isOpen ? '▾' : '▸'}</button>
+    <button class="twisty" onclick={() => toggleCollapsed(folder.path, isOpen)} aria-label="toggle">{isOpen ? '▾' : '▸'}</button>
     <button class="label" onclick={() => select({ kind: 'folder', path: folder.path })}>📁 {folder.label || folder.name}</button>
     <span class="actions">
       <button class="icon" title="New request" onclick={() => newRequest(folder.path)}>＋</button>
@@ -90,7 +90,7 @@
 {/if}
 {#if isOpen}
   {#each folder.folders as f (f.path)}
-    <TreeFolder folder={f} depth={depth + 1} bind:collapsed {folders} {forceOpen} />
+    <TreeFolder folder={f} depth={depth + 1} {folders} {forceOpen} />
   {/each}
   {#each folder.requests as r (r.path)}
     <div

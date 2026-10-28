@@ -66,11 +66,11 @@
         for (const n of built.notes) toast(n);
       }
       if (!local) {
-        await createWorkspace({ name: name || imported?.name || 'New collection', storage, files });
+        await createWorkspace({ name: name || imported?.name || 'New collection', storage, files, collapseFolders: mode === 'import' });
       } else if (mode === 'open') {
         await createWorkspace({ storage: 'disk', path: folder, files: {} });
       } else {
-        await createWorkspace({ name: name || imported?.name, storage: 'disk', files });
+        await createWorkspace({ name: name || imported?.name, storage: 'disk', files, collapseFolders: mode === 'import' });
       }
       onclose();
     } catch (err) {

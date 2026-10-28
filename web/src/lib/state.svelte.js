@@ -41,6 +41,7 @@ export const app = $state({
   results: {}, // path -> run output
   running: {}, // path -> AbortController
   dataScratch: {}, // workflow path -> data typed into the editor without a file
+  collapsed: {}, // folder path or 'section:<name>' -> true when closed (kept in the session)
   toasts: [],
   dialog: null,
   picker: null, // folder picker fallback when no native dialog exists
@@ -347,7 +348,15 @@ function sessionSnapshot() {
     selected: $state.snapshot(app.selected),
     env: app.env || '',
     drafts: $state.snapshot(app.drafts),
+    collapsed: $state.snapshot(app.collapsed),
   };
+}
+
+/** Opens or closes a folder or sidebar section. */
+export function toggleCollapsed(key, closed = !app.collapsed[key]) {
+  if (closed) app.collapsed[key] = true;
+  else delete app.collapsed[key];
+  persistUi();
 }
 
 async function writeSession(id, session) {
@@ -408,6 +417,7 @@ async function restoreUi(id, files) {
   for (const p of Object.keys(drafts)) if (!(p in files) && !tabs.some((t) => tabFiles(t).includes(p))) delete drafts[p];
   app.drafts = drafts;
   app.tabs = tabs;
+  app.collapsed = s.collapsed && typeof s.collapsed === 'object' ? s.collapsed : {};
   const sel = s.selected?.kind === 'env' && isEnvFile(s.selected.path) ? { kind: 'env', path: envName(s.selected.path) } : s.selected;
   app.selected = tabs.find((t) => sameTab(t, sel)) ?? tabs[0] ?? null;
   app.env = '';
@@ -554,7 +564,8 @@ export function currentFiles() {
 }
 
 /** storage: 'browser' | 'server' | 'disk'. Disk without path = new folder in the collections folder. */
-export async function createWorkspace({ name, storage, path, files }) {
+/** `collapseFolders`: open the new collection with all request folders closed (imports). */
+export async function createWorkspace({ name, storage, path, files, collapseFolders = false }) {
   files ??= scaffold(name);
   let ws;
   if (storage === 'browser') {
@@ -568,6 +579,14 @@ export async function createWorkspace({ name, storage, path, files }) {
   }
   await loadWorkspaces();
   await openWorkspace(app.workspaces.find((w) => w.id === ws.id) || ws);
+  if (collapseFolders) {
+    for (const p of Object.keys(app.files)) {
+      if (!p.startsWith('requests/')) continue;
+      const parts = p.split('/').slice(1, -1);
+      for (let i = 1; i <= parts.length; i++) app.collapsed[`requests/${parts.slice(0, i).join('/')}`] = true;
+    }
+    persistUi();
+  }
 }
 
 /** mode: 'unlist' (external folder stays), 'delete' (for good) or 'trash' (local folder to the system trash). */
