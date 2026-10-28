@@ -30,6 +30,11 @@ export function importRequestInto(text, dir, name = '', env = '') {
   return { doc, notes, warnings };
 }
 
+/** Whether the pasted request contains secrets that would be moved. */
+export function hasSecrets(text) {
+  return extractSecrets(importRequest(text).doc).length > 0;
+}
+
 // private file gets the values, the shared file declares the names empty
 // (so teammates see which secrets they need)
 function storeSecrets(env, secrets) {

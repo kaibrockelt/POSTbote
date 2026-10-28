@@ -21,7 +21,7 @@ import {
 } from './format.js';
 import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, toast, contentOf, setDraft } from './state.svelte.js';
 import { requestImporters } from './import/index.js';
-import { importRequestInto } from './import/apply.js';
+import { importRequestInto, hasSecrets } from './import/apply.js';
 
 const guard =
   (fn) =>
@@ -70,7 +70,8 @@ export const newRequest = guard(async (dir = 'requests') => {
   if (!name && !text) return;
   let doc = emptyRequest(name);
   if (text) {
-    const env = target === NEW_ENV ? await createEnv() : target;
+    // a new environment only makes sense when there is something to put in it
+    const env = target === NEW_ENV ? (hasSecrets(text) ? await createEnv() : '') : target;
     if (env === null) return;
     const imported = importRequestInto(text, dir, name, env);
     doc = imported.doc;
