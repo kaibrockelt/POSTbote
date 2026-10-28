@@ -1,0 +1,61 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { extractSecrets, useKnownVars } from './secrets.js';
+import { nameFromUrl } from './index.js';
+
+test('secrets become variables', () => {
+  const doc = {
+    url: 'https://api.example.com/users?api_key=abc&page=2',
+    auth: { type: 'bearer', token: 's3cr3t' },
+    headers: [
+      { key: 'Authorization', value: 'Bearer s3cr3t' },
+      { key: 'X-Api-Key', value: 'k1' },
+      { key: 'Accept', value: 'application/json' },
+      { key: 'Cookie', value: '{{session}}' },
+    ],
+    params: [
+      { key: 'api_key', value: 'abc' },
+      { key: 'page', value: '2' },
+    ],
+  };
+  const found = extractSecrets(doc);
+  assert.equal(doc.auth.token, '{{token}}');
+  assert.equal(doc.headers[0].value, 'Bearer {{token}}'); // same value, same name
+  assert.equal(doc.headers[1].value, '{{apiKey}}');
+  assert.equal(doc.headers[2].value, 'application/json');
+  assert.equal(doc.headers[3].value, '{{session}}');
+  assert.equal(doc.params[0].value, '{{apiKey2}}'); // different value, new name
+  assert.equal(doc.params[1].value, '2');
+  assert.deepEqual(
+    found.map((f) => [f.key, f.value]),
+    [
+      ['token', 's3cr3t'],
+      ['apiKey', 'k1'],
+      ['apiKey2', 'abc'],
+    ],
+  );
+});
+
+test('existing variable names are reused or avoided', () => {
+  const doc = { auth: { type: 'bearer', token: 'new' }, headers: [], params: [] };
+  extractSecrets(doc, new Map([['token', 'old']]));
+  assert.equal(doc.auth.token, '{{token2}}');
+});
+
+test('known base URL is replaced by its variable', () => {
+  const doc = { url: 'https://api.example.com/v1/users/7' };
+  const vars = [
+    { name: 'host', value: 'https://api.example.com' },
+    { name: 'baseUrl', value: 'https://api.example.com/v1/' },
+    { name: 'other', value: 'https://api.example.co' },
+  ];
+  assert.equal(useKnownVars(doc, vars), 'baseUrl');
+  assert.equal(doc.url, '{{baseUrl}}/users/7');
+  const d2 = { url: 'https://api.example.community/x' };
+  assert.equal(useKnownVars(d2, vars), null);
+});
+
+test('names from URLs', () => {
+  assert.equal(nameFromUrl('POST', 'https://x.io/api/users?x=1'), 'POST api/users');
+  assert.equal(nameFromUrl('GET', '{{baseUrl}}/'), 'GET /');
+});

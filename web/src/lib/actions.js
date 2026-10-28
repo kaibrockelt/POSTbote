@@ -17,8 +17,11 @@ import {
   envPublicPath,
   envPrivatePath,
   listEnvs,
+  emptyRequest,
 } from './format.js';
-import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, contentOf, setDraft } from './state.svelte.js';
+import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, toast, contentOf, setDraft } from './state.svelte.js';
+import { requestImporters } from './import/index.js';
+import { importRequestInto } from './import/apply.js';
 
 const guard =
   (fn) =>
@@ -29,18 +32,6 @@ const guard =
       fail(e);
     }
   };
-
-const emptyRequest = (name) => ({
-  name,
-  method: 'GET',
-  url: '{{baseUrl}}/',
-  params: [],
-  headers: [],
-  auth: { type: 'inherit' },
-  body: { type: 'none', content: '', fields: [] },
-  scripts: { pre: '', post: '' },
-  docs: '',
-});
 
 /** Keeps runner step references valid after files were moved. */
 function rewriteRefs(moves) {
@@ -60,10 +51,24 @@ function rewriteRefs(moves) {
 }
 
 export const newRequest = guard(async (dir = 'requests') => {
-  const name = await ask('New request', '', { placeholder: 'e.g. Get user' });
-  if (!name) return;
-  const path = uniquePath(app.files, dir, slug(name), REQ_EXT);
-  write(path, serializeRequest(emptyRequest(name)));
+  const formats = requestImporters.map((i) => i.label).join(', ');
+  const paste = formats && {
+    label: `…or paste a request (${formats}) – optional`,
+    placeholder: "curl https://api.example.com/users -H 'Accept: application/json'",
+    hint: app.env ? `Tokens and keys go to the private values of “${app.env}”.` : 'Activate an environment first to move tokens and keys into its private values.',
+  };
+  const res = await ask('New request', '', { placeholder: paste ? 'Name (optional when pasting)' : 'e.g. Get user', paste });
+  const { value: name, paste: text } = typeof res === 'string' ? { value: res, paste: '' } : res || {};
+  if (!name && !text) return;
+  let doc = emptyRequest(name);
+  if (text) {
+    const imported = importRequestInto(text, dir, name);
+    doc = imported.doc;
+    toast(imported.notes.join(' · '));
+    for (const w of imported.warnings) toast(w, 'error');
+  }
+  const path = uniquePath(app.files, dir, slug(doc.name), REQ_EXT);
+  write(path, serializeRequest(doc));
   select({ kind: 'request', path });
 });
 

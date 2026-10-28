@@ -2,6 +2,7 @@
   import { api } from '../lib/api.js';
   import { app, createWorkspace, pickFolder, fail, toast } from '../lib/state.svelte.js';
   import { slug, parseYaml, MANIFEST } from '../lib/format.js';
+  import { collectionImporters, importCollection } from '../lib/import/index.js';
 
   let { onclose } = $props();
   const local = app.info.mode === 'local';
@@ -11,7 +12,9 @@
   let name = $state('');
   let storage = $state('browser');
   let folder = $state('');
-  let imported = $state(null); // { files, skipped, name }
+  let imported = $state(null); // { files, skipped, name, format?, warnings? }
+  const formats = ['POSTBote zip', ...collectionImporters.map((i) => i.label)].join(', ');
+  const accept = ['.zip', ...collectionImporters.flatMap((i) => i.accept || [])].join(',');
   let busy = $state(false);
 
   const sep = home.includes('\\') ? '\\' : '/';
@@ -26,6 +29,13 @@
     const file = e.currentTarget.files[0];
     if (!file) return;
     try {
+      if (!/\.zip$/i.test(file.name)) {
+        // foreign formats are converted in the browser into a new collection
+        const res = importCollection(await file.text(), file.name);
+        imported = { ...res, skipped: [] };
+        if (!name) name = res.name;
+        return;
+      }
       const res = await api.importZip(file);
       const n = parseYaml(res.files[MANIFEST] || '').doc?.name || file.name.replace(/\.zip$/i, '');
       imported = { ...res, name: n };
@@ -65,7 +75,7 @@
     <div class="row gap seg">
       <label class="check"><input type="radio" bind:group={mode} value="new" /> Create new</label>
       {#if local}<label class="check"><input type="radio" bind:group={mode} value="open" /> Add existing folder</label>{/if}
-      <label class="check"><input type="radio" bind:group={mode} value="import" /> Import zip</label>
+      <label class="check"><input type="radio" bind:group={mode} value="import" /> Import</label>
     </div>
 
     {#if mode === 'open'}
@@ -79,9 +89,16 @@
       <p class="hint">For collections outside your collections folder, e.g. inside a project repository. Files stay where they are.</p>
     {:else}
       {#if mode === 'import'}
-        <label class="field"><span>Zip archive (exported from POSTBote)</span><input type="file" accept=".zip,application/zip" onchange={onfile} /></label>
+        <label class="field"><span>File ({formats})</span><input type="file" {accept} onchange={onfile} /></label>
         {#if imported}
-          <p class="muted">{Object.keys(imported.files).length} files{imported.skipped.length ? `, ${imported.skipped.length} skipped (binary/invalid)` : ''}</p>
+          <p class="muted">
+            {imported.format ? `${imported.format}: ` : ''}{Object.keys(imported.files).length} files{imported.skipped.length ? `, ${imported.skipped.length} skipped (binary/invalid)` : ''}
+          </p>
+          {#if imported.warnings?.length}
+            <ul class="warnings">
+              {#each imported.warnings as w}<li>{w}</li>{/each}
+            </ul>
+          {/if}
         {/if}
       {/if}
       <label class="field"><span>Name</span><input bind:value={name} placeholder="My API" /></label>
@@ -124,5 +141,13 @@
   }
   .disabled {
     opacity: 0.5;
+  }
+  .warnings {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12px;
+    color: var(--warn);
+    max-height: 140px;
+    overflow: auto;
   }
 </style>

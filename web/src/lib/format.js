@@ -95,6 +95,19 @@ const cleanScripts = (s) => prune({ pre: str(s?.pre), post: str(s?.post) });
 
 // ------------------------------------------------------------ request
 
+export const emptyRequest = (name) => ({
+  name,
+  method: 'GET',
+  url: '{{baseUrl}}/',
+  params: [],
+  headers: [],
+  auth: { type: 'inherit' },
+  body: { type: 'none', content: '', fields: [] },
+  scripts: { pre: '', post: '' },
+  docs: '',
+});
+
+
 export function parseRequest(text) {
   const { doc, error } = parseYaml(text);
   if (error) return { doc: null, error };

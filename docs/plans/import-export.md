@@ -1,6 +1,6 @@
 # Plan: Import / Export (not started)
 
-Status: researched 2026-10-28, nothing implemented yet.
+Status: researched 2026-10-28; base work started on branch `feature/import`.
 
 ## Formats
 
@@ -35,8 +35,17 @@ Status: researched 2026-10-28, nothing implemented yet.
 2. `pm` / `bru` script shim; Bruno, Insomnia, HAR, `.http` import.
 3. Export Postman v2.1 and `.http`; Postman 3.0; OpenAPI sync.
 
-## Open questions
+## Decisions (2026-10-28)
 
-1. `pm` compatibility layer already in phase 1, or scripts as comments first?
-2. Is OpenAPI re-import with sync needed early?
-3. Import target: always a new collection, or also into a folder of an existing one?
+- **Branches:** `feature/import` holds the shared structure (importer registry, secret extraction,
+  dialogs); every format gets its own branch off it (`feature/import-curl`, `feature/import-postman`,
+  `feature/import-openapi`, …) so formats can be extended and released independently.
+- **cURL (and other single requests):** pasted into an optional second field of the "New request"
+  dialog; creates one request in the current collection, never a collection.
+- **Collection formats (Postman, OpenAPI, …):** always create a new collection (the "Add a
+  collection" dialog, next to zip import), never a folder in an existing one.
+- **Postman scripts:** imported as comments first; a `pm` compatibility layer comes later on its own
+  branch.
+- **OpenAPI sync:** later; the import already records the origin (`operationId`) so a sync is possible.
+- **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
+  writes the files and browser-stored collections work the same; a CLI import would need a Rust port.

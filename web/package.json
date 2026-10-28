@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check",
-    "icons": "node scripts/build-icons.mjs"
+    "icons": "node scripts/build-icons.mjs",
+    "test": "node --test \"src/**/*.test.js\""
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",
