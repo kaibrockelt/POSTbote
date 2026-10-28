@@ -34,8 +34,13 @@ Releases: push tag `vX.Y.Z` → `.github/workflows/release.yml` builds Tauri bun
 - Generated YAML omits empty fields to keep git diffs small; opening a file must not rewrite it.
 - UI text is English; the user talks German.
 - Test UI changes in the browser (local mode with an isolated `HOME`, e.g. in the scratchpad) before reporting done.
+- Larger features (import, node workflows, …) on their own branch (`feature/<name>`); small fixes and docs may go to main.
 - Commit only when asked; end commit messages with the Co-Authored-By line.
 
 ## Next up
 
+Full list of planned topics: `docs/plans/roadmap.md`.
+
 `docs/plans/import-export.md` – phase 1: cURL paste import with secret detection, Postman v2.1, OpenAPI. Open questions listed there.
+
+Terminology: today's "workflows" (`*.flow.yaml` request chains) are to be renamed **"Runner"**; "workflows" will mean the planned node-based builder (Node-RED/n8n style) in `docs/plans/node-workflows.md` (also: gear icon → Settings page, env dropdown alignment). Not implemented yet; open questions listed there.
