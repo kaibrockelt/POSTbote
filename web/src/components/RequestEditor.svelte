@@ -98,12 +98,24 @@
           <p class="hint">Collection and folder headers are inherited; a header with the same name here overrides them.</p>
         {:else if tab === 'body'}
           <div class="row body-types">
-            {#each ['none', 'json', 'text', 'xml', 'form', 'multipart'] as t}
+            {#each ['none', 'json', 'graphql', 'text', 'xml', 'form', 'multipart'] as t}
               <label class="check"><input type="radio" bind:group={d.doc.body.type} value={t} /> {t}</label>
             {/each}
           </div>
           {#if d.doc.body.type === 'form' || d.doc.body.type === 'multipart'}
             <KvTable bind:rows={d.doc.body.fields} withFile={d.doc.body.type === 'multipart'} keyPlaceholder="Field" />
+          {:else if d.doc.body.type === 'graphql'}
+            <div class="gql">
+              <div class="gql-part">
+                <span class="muted small">Query</span>
+                <VarField class="mono" multiline bind:value={d.doc.body.content} rows={12} placeholder={'query Users($limit: Int) {\n  users(limit: $limit) { id name }\n}'} />
+              </div>
+              <div class="gql-part">
+                <span class="muted small">Variables (JSON)</span>
+                <VarField class="mono" multiline bind:value={d.doc.body.variables} rows={12} placeholder={'{\n  "limit": 10\n}'} />
+              </div>
+            </div>
+            <p class="hint">Sent as JSON <code>{'{ "query", "variables" }'}</code> with Content-Type application/json; usually with method POST.</p>
           {:else if d.doc.body.type !== 'none'}
             <VarField class="mono" multiline bind:value={d.doc.body.content} rows={14} placeholder={d.doc.body.type === 'json' ? '{\n  "name": "{{name}}"\n}' : ''} />
           {/if}
@@ -177,6 +189,16 @@
   }
   .tab-body {
     padding: 8px 0;
+  }
+  .gql {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 10px;
+  }
+  .gql-part {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   .body-types {
     gap: 14px;

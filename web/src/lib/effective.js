@@ -66,6 +66,17 @@ export function effectiveRequest(files, env, reqPath, doc, { resolve = true } = 
   const body = { type, content: '', fields: [] };
   if (type === 'form' || type === 'multipart') {
     body.fields = enabled(doc.body.fields).map((f) => ({ key: I(f.key), value: I(f.value), file: f.file ? I(f.file) : '' }));
+  } else if (type === 'graphql' && doc.body?.content) {
+    // shown and exported like the runner sends it: a JSON { query, variables } body
+    let variables;
+    try {
+      variables = doc.body.variables?.trim() ? JSON.parse(I(doc.body.variables)) : undefined;
+    } catch {
+      variables = I(doc.body.variables);
+    }
+    body.type = 'json';
+    body.content = JSON.stringify({ query: I(doc.body.content), variables }, null, 2);
+    if (!has('content-type')) headers.push(['Content-Type', 'application/json']);
   } else if (type !== 'none' && doc.body?.content) {
     body.content = I(doc.body.content);
     const ct = { json: 'application/json', xml: 'application/xml', text: 'text/plain; charset=utf-8' }[type];

@@ -328,6 +328,8 @@ struct ExportedReq {
     url: String,
     body: String,
     body_type: String,
+    #[serde(default)]
+    variables: String,
     headers: Vec<(String, String)>,
     params: Vec<ExportedKv>,
     fields: Vec<ExportedKv>,
@@ -556,6 +558,7 @@ impl Engine {
             "url": req.url,
             "body": req.body.content,
             "bodyType": req.body.kind,
+            "variables": req.body.variables,
             "headers": headers,
             "params": model::enabled(&req.params).map(|p| json!({"key": p.key, "value": p.value})).collect::<Vec<_>>(),
             "fields": model::enabled(&req.body.fields).map(|p| json!({"key": p.key, "value": p.value, "file": p.file})).collect::<Vec<_>>(),
@@ -974,6 +977,18 @@ fn build_request(st: &State, x: ExportedReq, auth: Option<&Auth>) -> Result<OutR
                 parts.push(Part { name: st.interp(&f.key), value: st.interp(&f.value), file });
             }
             OutBody::Multipart(parts)
+        }
+        "graphql" => {
+            // sent as the usual JSON envelope { query, variables }
+            let vars = st.interp(&x.variables);
+            let mut payload = json!({ "query": st.interp(&x.body) });
+            if !vars.trim().is_empty() {
+                payload["variables"] = serde_json::from_str(&vars).map_err(|e| format!("GraphQL variables are not valid JSON: {e}"))?;
+            }
+            if !has_header(&headers, "content-type") {
+                headers.push(("Content-Type".into(), "application/json".into()));
+            }
+            OutBody::Raw(payload.to_string())
         }
         _ if x.body.is_empty() => OutBody::None,
         _ => {

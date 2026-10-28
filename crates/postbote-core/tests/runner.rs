@@ -225,3 +225,39 @@ fn script_limits() {
     let r = run(mk(), Target::Request("requests/syntax.req.yaml".into()), opts()).request.unwrap();
     assert!(r.script_errors[0].contains("SyntaxError"), "{:?}", r.script_errors);
 }
+
+#[test]
+fn graphql_body_is_sent_as_json_envelope() {
+    let base = echo_server();
+    let fs = collection(
+        &base,
+        &[
+            (
+                "requests/gql.req.yaml",
+                r#"name: Users
+method: POST
+url: "{{baseUrl}}/graphql"
+body:
+  type: graphql
+  content: |
+    query Users($region: String!) { users(region: $region) { id } }
+  variables: '{"region": "{{region}}", "limit": 5}'
+scripts:
+  post: |
+    const j = res.json();
+    const sent = JSON.parse(j.body);
+    test('query', () => expect(sent.query).toContain('users(region: $region)'));
+    test('variables', () => expect(sent.variables).toEqual({ region: 'eu', limit: 5 }));
+    test('content type', () => expect(j.headers['content-type']).toBe('application/json'));
+"#,
+            ),
+            ("requests/bad.req.yaml", "name: Bad\nmethod: POST\nurl: \"{{baseUrl}}/graphql\"\nbody:\n  type: graphql\n  content: '{ a }'\n  variables: '{oops'\n"),
+        ],
+    );
+    let r = run(fs, Target::Request("requests/gql.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.is_none(), "{:?} {:?}", r.error, r.script_errors);
+    assert!(r.tests.iter().all(|t| t.passed), "{:#?}", r.tests);
+    let fs = collection(&base, &[("requests/bad.req.yaml", "name: Bad\nmethod: POST\nurl: \"{{baseUrl}}/graphql\"\nbody:\n  type: graphql\n  content: '{ a }'\n  variables: '{oops'\n")]);
+    let r = run(fs, Target::Request("requests/bad.req.yaml".into()), opts()).request.unwrap();
+    assert!(r.error.as_deref().unwrap_or("").contains("GraphQL variables"), "{:?}", r.error);
+}

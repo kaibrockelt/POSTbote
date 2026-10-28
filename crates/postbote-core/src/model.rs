@@ -58,11 +58,14 @@ pub struct Auth {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Body {
-    /// none | json | text | xml | form | multipart
+    /// none | json | text | xml | form | multipart | graphql
     #[serde(rename = "type")]
     pub kind: String,
+    /// raw body, or the query for graphql
     pub content: String,
     pub fields: Vec<Kv>,
+    /// graphql: variables as JSON text
+    pub variables: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
