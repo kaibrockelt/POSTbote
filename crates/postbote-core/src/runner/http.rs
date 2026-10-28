@@ -35,6 +35,7 @@ pub struct Part {
     pub file: Option<(String, String)>,
 }
 
+#[derive(Clone)]
 pub struct Http {
     client: Client,
     max_body: usize,

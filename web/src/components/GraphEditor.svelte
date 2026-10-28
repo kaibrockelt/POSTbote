@@ -6,7 +6,7 @@
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseGraph, serializeGraph, GRAPH_EXT } from '../lib/format.js';
   import { allRequests } from '../lib/tree.js';
-  import { NODE_TYPES, INPUT_TYPES, outsOf, uniqueNodeId } from '../lib/graph.js';
+  import { NODE_TYPES, outsOf, uniqueNodeId } from '../lib/graph.js';
   import { app, run, cancelRun, select } from '../lib/state.svelte.js';
 
   let { path } = $props();
@@ -152,7 +152,7 @@
 
     <div class="layout">
       <div class="palette">
-        {#each ['Start', 'Actions', 'Files', 'Control', 'End'] as group (group)}
+        {#each ['Start', 'Actions', 'Control', 'Files', 'End'] as group (group)}
           <div class="group">{group}</div>
           {#each Object.entries(NODE_TYPES).filter(([, t]) => t.group === group) as [type, t] (type)}
             <button class="small add" onclick={() => addNode(type)}>＋ {t.label}</button>
@@ -217,11 +217,12 @@
           {@const t = NODE_TYPES[node.type]}
           <div class="row between"><b>{t?.label || node.type}</b><span class="muted small mono">{node.id}</span></div>
           <label><span>Name</span><input bind:value={node.name} /></label>
-          {#if !t?.starter || node.type === 'fromWorkflow'}
+          {#if t?.inputs.length}
             <label>
               <span>Input type</span>
               <select bind:value={node.input}>
-                {#each INPUT_TYPES as it (it)}<option value={it}>{it || 'any'}</option>{/each}
+                {#if node.input && !t.inputs.includes(node.input)}<option value={node.input}>{node.input} (not useful here)</option>{/if}
+                {#each t.inputs as it (it)}<option value={it}>{it || 'any'}</option>{/each}
               </select>
             </label>
           {/if}
@@ -229,7 +230,7 @@
           {#if node.type === 'manual'}
             <label><span>Payload</span><select bind:value={node.payloadType}><option value="json">JSON</option><option value="csv">CSV (header row → JSON rows)</option><option value="text">text</option></select></label>
             <CodeArea bind:value={node.payload} rows={8} placeholder={node.payloadType === 'csv' ? 'id,name\n1,ada\n2,grace' : '[\n  { "id": "kai" },\n  { "id": "kaisen" }\n]'} />
-          {:else if node.type === 'call'}
+          {:else if node.type === 'request'}
             <label>
               <span>Request</span>
               <select bind:value={node.request}>
@@ -240,7 +241,7 @@
             <label class="check"><input type="checkbox" bind:checked={node.useFolder} /> use folder settings (variables, headers, auth, scripts)</label>
             <p class="hint">A JSON input overrides folder and collection variables of the same name (never environment values). <code>{'{{input.field}}'}</code> works anywhere in the request.</p>
             {#if node.request}<button class="link small" onclick={() => select({ kind: 'request', path: node.request })}>Open request ↗</button>{/if}
-          {:else if node.type === 'compute'}
+          {:else if node.type === 'script'}
             <span class="muted small">Code — <code>input</code> is the incoming value; <code>return</code> the output, <code>throw</code> goes to err</span>
             <CodeArea bind:value={node.code} rows={12} />
           {:else if node.type === 'switch'}
@@ -261,7 +262,37 @@
                 {#each d.doc.nodes.filter((n) => n.id !== node.id && !NODE_TYPES[n.type]?.starter) as n (n.id)}<option value={n.id}>{n.name || n.id}</option>{/each}
               </select>
             </label>
+            <label class="check"><input type="checkbox" bind:checked={node.parallel} /> parallel</label>
+            {#if node.parallel}
+              <label><span>At most at the same time</span><input type="number" min="1" max="50" bind:value={node.limit} /></label>
+              <p class="hint">Request nodes are sent at the same time (scripts still run one after another); other nodes run in order.</p>
+            {/if}
             <p class="hint">Takes a JSON array or CSV. The chosen node runs once per item (its own edges are not followed); the outputs are collected as a JSON array.</p>
+          {:else if node.type === 'setVar'}
+            <label><span>Store in</span><select bind:value={node.scope}><option value="vars">run variable (vars, this run only)</option><option value="env">environment (private value, saved)</option></select></label>
+            <label><span>Variable</span><input class="mono" bind:value={node.variable} placeholder="token" /></label>
+            <label><span>Value</span><input class="mono" bind:value={node.value} placeholder={'{{input.access_token}} – empty = the whole input'} /></label>
+            <p class="hint">Later requests use it as <code>{'{{'}{node.variable || 'name'}{'}}'}</code>. The input passes on unchanged.</p>
+          {:else if node.type === 'filter'}
+            <label><span>Keep items where</span><input class="mono" bind:value={node.expr} placeholder="item.active && index < 10" /></label>
+            <p class="hint">JavaScript with <code>item</code> and <code>index</code>; takes a JSON array or CSV, outputs the matching items.</p>
+          {:else if node.type === 'assert'}
+            <span class="muted small">All must be true (JavaScript with <code>input</code>), else the node goes to err</span>
+            {#each node.checks as c, i (i)}
+              <div class="case">
+                <input class="mono grow" bind:value={c.expr} placeholder="input.status === 'ok'" />
+                <input bind:value={c.message} placeholder="message" />
+                <button class="icon" title="Remove check" onclick={() => node.checks.splice(i, 1)}>✕</button>
+              </div>
+            {/each}
+            <button class="small" onclick={() => node.checks.push({ expr: '', message: '' })}>＋ Check</button>
+            <p class="hint">An unconnected err stops the workflow, so a failed check makes CLI runs fail (exit code 1).</p>
+          {:else if node.type === 'delay'}
+            <label><span>Milliseconds</span><input class="mono" bind:value={node.ms} placeholder={'1000 or {{input.wait}}'} /></label>
+          {:else if node.type === 'transform'}
+            <span class="muted small">Template — JSON (or text) with <code>{'{{input.x}}'}</code> and other variables</span>
+            <CodeArea bind:value={node.template} rows={10} />
+            <p class="hint">Quote strings yourself: <code>{'"name": "{{input.name}}"'}</code>, numbers without quotes.</p>
           {:else if node.type === 'loadFile'}
             <label><span>Path</span><input class="mono" bind:value={node.path} placeholder={'data/{{input.name}}.json'} /></label>
             <label><span>Parse as</span><select bind:value={node.parse}><option value="json">JSON</option><option value="csv">CSV</option><option value="text">text</option><option value="file">file</option></select></label>

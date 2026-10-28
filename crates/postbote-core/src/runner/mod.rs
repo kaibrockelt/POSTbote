@@ -277,6 +277,14 @@ struct State {
     clock: Arc<Clock>,
 }
 
+/// A request ready to send (see `prepare_request` / `finish_request`).
+struct Prepared {
+    out: OutReq,
+    /// the script `req` object, restored before the post-response scripts
+    req_json: String,
+    post: Vec<(String, String)>,
+}
+
 /// `{"user.name": "ada"}` → `{"user": {"name": "ada"}}`; `_` is the whole input.
 fn inputs_value(inputs: &BTreeMap<String, String>) -> Value {
     if let Some(whole) = inputs.get("_") {
@@ -577,6 +585,18 @@ impl Engine {
     }
 
     fn exec_request_inner(&self, path: &str, step: Option<&Step>, res: &mut RequestResult) {
+        let Some(prepared) = self.prepare_request(path, step, res) else { return };
+        if self.clock.cancelled() {
+            res.error = Some(self.clock.reason().into());
+            return;
+        }
+        let sent = self.st.borrow().http.send(&prepared.out);
+        self.finish_request(prepared, sent, res);
+    }
+
+    /// Everything up to the HTTP call: variables, pre-request scripts, the
+    /// final request. `None` = stopped (the error is in `res`).
+    fn prepare_request(&self, path: &str, step: Option<&Step>, res: &mut RequestResult) -> Option<Prepared> {
         let loaded = {
             let st = self.st.borrow();
             let skip = st.skip_folders;
@@ -586,7 +606,7 @@ impl Engine {
             Ok(x) => x,
             Err(e) => {
                 res.error = Some(format!("{e:#}"));
-                return;
+                return None;
             }
         };
         // run on its own: the request's sample inputs stand in for a workflow node input
@@ -638,7 +658,7 @@ impl Engine {
         self.slot("req", data.to_string());
         if let Err(e) = self.eval_unit("globalThis.req = __makeReq(__slot('req')); globalThis.res = undefined;") {
             res.error = Some(e);
-            return;
+            return None;
         }
 
         let mut pre: Vec<(String, &str)> = vec![("collection pre-request".into(), col.scripts.pre.as_str())];
@@ -653,7 +673,7 @@ impl Engine {
             if let Err(e) = self.run_script(code, &source) {
                 res.script_errors.push(e);
                 res.error = Some("pre-request script failed, request not sent".into());
-                return;
+                return None;
             }
         }
 
@@ -664,7 +684,7 @@ impl Engine {
             Ok(x) => x,
             Err(e) => {
                 res.error = Some(format!("request object: {e}"));
-                return;
+                return None;
             }
         };
 
@@ -672,7 +692,7 @@ impl Engine {
             Ok(o) => o,
             Err(e) => {
                 res.error = Some(e);
-                return;
+                return None;
             }
         };
         res.request = Some(SentRequest {
@@ -687,14 +707,24 @@ impl Engine {
             },
         });
 
-        if self.clock.cancelled() {
-            res.error = Some(self.clock.reason().into());
-            return;
+        let mut post: Vec<(String, String)> = vec![("collection post-response".into(), col.scripts.post.clone())];
+        for f in &folders {
+            post.push((format!("folder {} post-response", f.path), f.scripts.post.clone()));
         }
-        let sent = {
-            let st = self.st.borrow();
-            st.http.send(&out)
-        };
+        post.push(("post-response".into(), req.scripts.post.clone()));
+        if let Some(s) = step {
+            post.push((format!("step {} post", s.name), s.scripts.post.clone()));
+        }
+        let req_json = self.eval_str("JSON.stringify(__exportReq(req))").unwrap_or_default();
+        Some(Prepared { out, req_json, post })
+    }
+
+    /// After the HTTP call: the response object and post-response scripts.
+    /// `req` is restored first, so batches can finish one after another.
+    fn finish_request(&self, p: Prepared, sent: Result<Response, String>, res: &mut RequestResult) {
+        self.slot("req", p.req_json);
+        let _ = self.eval_unit("globalThis.req = __makeReq(JSON.parse(__slot('req')));");
+
         let response = match sent {
             Ok(r) => r,
             Err(e) => {
@@ -709,16 +739,8 @@ impl Engine {
             return;
         }
 
-        let mut post: Vec<(String, &str)> = vec![("collection post-response".into(), col.scripts.post.as_str())];
-        for f in &folders {
-            post.push((format!("folder {} post-response", f.path), f.scripts.post.as_str()));
-        }
-        post.push(("post-response".into(), req.scripts.post.as_str()));
-        if let Some(s) = step {
-            post.push((format!("step {} post", s.name), s.scripts.post.as_str()));
-        }
-        for (source, code) in post {
-            if let Err(e) = self.run_script(code, &source) {
+        for (source, code) in &p.post {
+            if let Err(e) = self.run_script(code, source) {
                 res.script_errors.push(e);
             }
         }

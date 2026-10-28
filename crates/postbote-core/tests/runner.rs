@@ -38,6 +38,9 @@ fn echo_server() -> String {
                 }
                 let mut body = vec![0; len];
                 rd.read_exact(&mut body).unwrap();
+                if path.starts_with("/slow") {
+                    std::thread::sleep(Duration::from_millis(300));
+                }
                 let status = if path.starts_with("/status/404") { "404 Not Found" } else { "200 OK" };
                 let out = serde_json::json!({
                     "method": method, "path": path, "headers": headers,
@@ -233,13 +236,13 @@ fn node_workflow_runs_nodes_loops_switches_and_subworkflows() {
 nodes:
   - { id: start, type: manual, payload: '{"ids": [1, 2, 3], "color": "red", "region": "evil"}' }
   - id: prep
-    type: compute
+    type: script
     input: json
     code: "return input.ids.map(id => ({ id, color: 'green', region: 'evil' }))"
   - { id: each, type: forEach, input: json, child: call }
-  - { id: call, type: call, input: json, request: requests/item.req.yaml }
+  - { id: call, type: request, input: json, request: requests/item.req.yaml }
   - id: sum
-    type: compute
+    type: script
     code: "return input.map(r => r.path + '|' + r.headers['x-color'] + '|' + r.headers['x-region'])"
   - id: check
     type: switch
@@ -271,7 +274,7 @@ edges:
     // input fields override collection variables (color) but never the environment (region=eu)
     let expected = serde_json::json!(["/item/1|green|eu", "/item/2|green|eu", "/item/3|green|eu"]);
     assert_eq!(g.result.unwrap(), expected);
-    assert_eq!(g.steps.iter().filter(|s| s.kind == "call").count(), 3);
+    assert_eq!(g.steps.iter().filter(|s| s.kind == "request").count(), 3);
     let written = out.changed_files.get("data//item/1|green|eu.json").or(out.changed_files.values().next());
     assert!(written.is_some(), "{:?}", out.changed_files.keys().collect::<Vec<_>>());
 }
@@ -282,8 +285,8 @@ fn node_workflow_error_ports_and_subworkflows() {
     let main = r#"nodes:
   - { id: s, type: manual, payload: '{"n": 21}' }
   - { id: sub, type: workflow, workflow: workflows/double.workflow.yaml }
-  - { id: bad, type: compute, code: "throw new Error('boom')" }
-  - { id: catch, type: compute, code: "return { caught: input.message }" }
+  - { id: bad, type: script, code: "throw new Error('boom')" }
+  - { id: catch, type: script, code: "return { caught: input.message }" }
   - { id: ret, type: return }
 edges:
   - { from: s, out: out, to: sub }
@@ -293,13 +296,13 @@ edges:
 "#;
     let double = r#"nodes:
   - { id: in, type: fromWorkflow, input: json }
-  - { id: x2, type: compute, code: "return { n: input.n * 2 }" }
+  - { id: x2, type: script, code: "return { n: input.n * 2 }" }
   - { id: r, type: return }
 edges:
   - { from: in, out: out, to: x2 }
   - { from: x2, out: out, to: r }
 "#;
-    let unhandled = "nodes:\n  - { id: s, type: manual }\n  - { id: c, type: call, request: requests/missing.req.yaml }\nedges:\n  - { from: s, out: out, to: c }\n";
+    let unhandled = "nodes:\n  - { id: s, type: manual }\n  - { id: c, type: request, request: requests/missing.req.yaml }\nedges:\n  - { from: s, out: out, to: c }\n";
     let recursive = "nodes:\n  - { id: s, type: manual, payload: '{}' }\n  - { id: in, type: fromWorkflow }\n  - { id: w, type: workflow, workflow: workflows/loop.workflow.yaml }\nedges:\n  - { from: s, out: out, to: w }\n  - { from: in, out: out, to: w }\n";
     let mk = || {
         collection(
@@ -328,7 +331,7 @@ edges:
 fn request_inputs_sample_values_and_workflow_override() {
     let base = echo_server();
     let req = "name: User\nurl: \"{{baseUrl}}/users/{{input.id}}/{{input.org.name}}\"\ninputs:\n  id: \"7\"\n  org.name: acme\n";
-    let flow = "nodes:\n  - { id: s, type: manual, payloadType: csv, payload: \"id,org\\n42,x\" }\n  - { id: e, type: forEach, child: c }\n  - { id: c, type: call, request: requests/user.req.yaml }\n  - { id: r, type: return }\nedges:\n  - { from: s, out: out, to: e }\n  - { from: e, out: out, to: r }\n";
+    let flow = "nodes:\n  - { id: s, type: manual, payloadType: csv, payload: \"id,org\\n42,x\" }\n  - { id: e, type: forEach, child: c }\n  - { id: c, type: request, request: requests/user.req.yaml }\n  - { id: r, type: return }\nedges:\n  - { from: s, out: out, to: e }\n  - { from: e, out: out, to: r }\n";
     let mk = || collection(&base, &[("requests/user.req.yaml", req), ("workflows/f.workflow.yaml", flow)]);
     // on its own: the sample inputs
     let r = run(mk(), Target::Request("requests/user.req.yaml".into()), opts()).request.unwrap();
@@ -336,6 +339,54 @@ fn request_inputs_sample_values_and_workflow_override() {
     assert!(r.request.unwrap().url.ends_with("/users/7/acme"));
     // from a workflow (CSV start → JSON rows): the node input replaces them (org.name missing → unresolved)
     let g = run(mk(), Target::Graph("workflows/f.workflow.yaml".into(), None), opts()).graph.unwrap();
-    let call = g.steps.iter().find(|s| s.kind == "call").unwrap();
+    let call = g.steps.iter().find(|s| s.kind == "request").unwrap();
     assert!(call.error.as_deref().unwrap_or("").contains("{{input.org.name}}"), "{:?}", call.error);
+}
+
+#[test]
+fn workflow_utility_nodes_and_parallel_for_each() {
+    let base = echo_server();
+    let flow = r#"nodes:
+  - { id: s, type: manual, payloadType: csv, payload: "id,active\n1,yes\n2,no\n3,yes\n4,yes\n5,yes" }
+  - { id: tok, type: setVar, variable: token, value: "t-{{input.0.id}}" }
+  - { id: act, type: filter, expr: "item.active === 'yes'" }
+  - { id: wait, type: delay, ms: 10 }
+  - { id: each, type: forEach, child: call, parallel: true, limit: 4 }
+  - { id: call, type: request, request: requests/slow.req.yaml }
+  - { id: check, type: assert, checks: [{ expr: "input.length === 4" }, { expr: "input.every(r => r.headers['x-token'] === 't-1')", message: "token header" }] }
+  - id: shape
+    type: transform
+    template: '{ "count": 4, "first": "{{input.0.path}}" }'
+  - { id: r, type: return }
+edges:
+  - { from: s, out: out, to: tok }
+  - { from: tok, out: out, to: act }
+  - { from: act, out: out, to: wait }
+  - { from: wait, out: out, to: each }
+  - { from: each, out: out, to: check }
+  - { from: check, out: out, to: shape }
+  - { from: shape, out: out, to: r }
+"#;
+    let fail = "nodes:\n  - { id: s, type: manual, payload: '{\"n\": 1}' }\n  - { id: a, type: assert, checks: [{ expr: 'input.n === 2', message: 'n must be 2' }] }\nedges:\n  - { from: s, out: out, to: a }\n";
+    let mk = || {
+        collection(
+            &base,
+            &[
+                ("requests/slow.req.yaml", "name: Slow\nurl: \"{{baseUrl}}/slow/{{input.id}}\"\nheaders:\n  - key: X-Token\n    value: \"{{token}}\"\n"),
+                ("workflows/u.workflow.yaml", flow),
+                ("workflows/fail.workflow.yaml", fail),
+            ],
+        )
+    };
+    let started = std::time::Instant::now();
+    let g = run(mk(), Target::Graph("workflows/u.workflow.yaml".into(), None), opts()).graph.unwrap();
+    let took = started.elapsed();
+    assert!(g.error.is_none(), "{:?} {:#?}", g.error, g.steps.iter().map(|s| (&s.node, &s.error)).collect::<Vec<_>>());
+    assert_eq!(g.result.unwrap(), serde_json::json!({ "count": 4, "first": "/slow/1" }));
+    // four 300 ms requests at once, not one after another
+    assert!(took < Duration::from_millis(1000), "took {took:?}");
+    assert_eq!(g.steps.iter().filter(|s| s.kind == "request").count(), 4);
+
+    let g = run(mk(), Target::Graph("workflows/fail.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.as_deref().unwrap_or("").contains("assertion failed: n must be 2"), "{:?}", g.error);
 }

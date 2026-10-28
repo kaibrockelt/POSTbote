@@ -224,29 +224,15 @@ impl Engine {
                 }
             }
             "fromWorkflow" => out(input),
-            "call" => {
+            "request" => {
                 let req = s("request");
                 if req.is_empty() {
                     return Err("choose a request".into());
                 }
                 let use_folder = cfg.get("useFolder").and_then(Value::as_bool).unwrap_or(true);
-                {
-                    let mut st = self.st.borrow_mut();
-                    st.graph_input = Some(input.value.clone());
-                    // JSON fields override folder/collection variables, never the environment
-                    st.input_vars = match &input.value {
-                        Value::Object(o) if input.kind == "json" => o.iter().map(|(k, v)| (k.clone(), var_text(v))).collect(),
-                        _ => BTreeMap::new(),
-                    };
-                    st.skip_folders = !use_folder;
-                }
+                self.set_call_input(&input, use_folder);
                 let res = self.exec_request(&req, None);
-                {
-                    let mut st = self.st.borrow_mut();
-                    st.graph_input = None;
-                    st.input_vars.clear();
-                    st.skip_folders = false;
-                }
+                self.clear_call_input();
                 let error = res.error.clone().or_else(|| res.script_errors.first().cloned());
                 let body = res.response.as_ref().map(|r| r.body.clone());
                 step.request = Some(res);
@@ -256,7 +242,7 @@ impl Engine {
                 let body = body.unwrap_or_default();
                 out(serde_json::from_str(&body).map(Data::json).unwrap_or_else(|_| Data::text(body)))
             }
-            "compute" => self.js(node, "__runCompute()", &s("code"), &input).map(Data::json).and_then(out),
+            "script" => self.js(node, "__runCompute()", &s("code"), &input).map(Data::json).and_then(out),
             "switch" => {
                 let cases = cfg.get("cases").and_then(Value::as_array).cloned().unwrap_or_default();
                 for c in cases {
@@ -270,14 +256,81 @@ impl Engine {
                 }
                 Ok(Emit::Port("default".into(), input))
             }
+            "setVar" => {
+                let name = s("variable");
+                if name.trim().is_empty() {
+                    return Err("set the variable name".into());
+                }
+                // empty value template = the whole input
+                let tpl = s("value");
+                let value = if tpl.is_empty() { input.value.clone() } else { Value::String(self.with_input(&input, |st| st.interp(&tpl))) };
+                let mut st = self.st.borrow_mut();
+                if s("scope") == "env" {
+                    if st.env_path.is_none() {
+                        st.log("warn", format!("set variable {name:?}: no environment selected, kept for this run only"));
+                    }
+                    let text = var_text(&value);
+                    if !st.env.contains_key(&name) {
+                        st.env_order.push(name.clone());
+                    }
+                    st.env.insert(name.clone(), text.clone());
+                    st.env_changes.insert(name, Some(text));
+                } else {
+                    st.vars.insert(name, value);
+                }
+                drop(st);
+                out(input)
+            }
+            "filter" => {
+                let expr = s("expr");
+                if expr.trim().is_empty() {
+                    return Err("set the filter expression".into());
+                }
+                let items = rows_of(&input)?;
+                let code = format!("return input.filter((item, index) => ({expr}\n));");
+                self.js(node, "__runCompute()", &code, &Data::json(Value::Array(items))).map(Data::json).and_then(out)
+            }
+            "assert" => {
+                let checks = cfg.get("checks").and_then(Value::as_array).cloned().unwrap_or_default();
+                let mut failed = Vec::new();
+                for c in checks {
+                    let expr = c.get("expr").and_then(Value::as_str).unwrap_or("");
+                    if expr.trim().is_empty() {
+                        continue;
+                    }
+                    let ok = self.js(node, "__evalCase()", expr, &input)?.as_bool() == Some(true);
+                    if !ok {
+                        failed.push(c.get("message").and_then(Value::as_str).filter(|m| !m.is_empty()).unwrap_or(expr).to_string());
+                    }
+                }
+                if failed.is_empty() { out(input) } else { Err(format!("assertion failed: {}", failed.join("; "))) }
+            }
+            "delay" => {
+                let ms = self.with_input(&input, |st| st.interp(&cfg.get("ms").map(var_text).unwrap_or_default())).trim().parse::<u64>().map_err(|_| "delay: milliseconds must be a number")?;
+                let until = Instant::now() + std::time::Duration::from_millis(ms.min(600_000));
+                while Instant::now() < until {
+                    if self.clock.cancelled() {
+                        return Err(self.clock.reason().into());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20).min(until - Instant::now()));
+                }
+                out(input)
+            }
+            "transform" => {
+                // a JSON (or text) template with {{input.x}} and other variables
+                let text = self.with_input(&input, |st| st.interp(&s("template")));
+                out(serde_json::from_str(&text).map(Data::json).unwrap_or_else(|_| Data::text(text)))
+            }
             "forEach" => {
-                let items = match (input.kind, &input.value) {
-                    ("json", Value::Array(a)) => a.clone(),
-                    ("csv" | "text", Value::String(t)) => parse_csv(t, &json!({}))?.as_array().cloned().unwrap_or_default(),
-                    _ => return Err("forEach needs a JSON array or CSV".into()),
-                };
+                let items = rows_of(&input)?;
                 let child_id = s("child");
                 let child = run.graph.nodes.iter().find(|n| n.id == child_id).ok_or("choose the node to run for every item")?;
+                // parallel: calls are prepared one after another, sent at the same time
+                // (up to `limit`), and finished in order
+                if cfg.get("parallel").and_then(Value::as_bool).unwrap_or(false) && child.kind == "request" {
+                    let limit = cfg.get("limit").and_then(Value::as_u64).unwrap_or(5).clamp(1, 50) as usize;
+                    return self.parallel_calls(run, child, items, limit).map(|v| Emit::Port("out".into(), Data::json(Value::Array(v))));
+                }
                 let mut results = Vec::with_capacity(items.len());
                 for (i, item) in items.into_iter().enumerate() {
                     let mut sub = StepResult { node: child.id.clone(), kind: child.kind.clone(), name: format!("{} #{}", label(child), i + 1), ..Default::default() };
@@ -355,6 +408,82 @@ impl Engine {
         }
     }
 
+    /// forEach (parallel) with a Call node: batches of `limit` requests.
+    fn parallel_calls(&self, run: &mut Run, child: &GraphNode, items: Vec<Value>, limit: usize) -> Result<Vec<Value>, String> {
+        let req = child.cfg.get("request").and_then(Value::as_str).unwrap_or("").to_string();
+        if req.is_empty() {
+            return Err(format!("{}: choose a request", label(child)));
+        }
+        let use_folder = child.cfg.get("useFolder").and_then(Value::as_bool).unwrap_or(true);
+        let mut results = Vec::with_capacity(items.len());
+        for (batch_no, batch) in items.chunks(limit).enumerate() {
+            // 1. prepare (scripts, variables) one after another
+            let mut prepared = Vec::with_capacity(batch.len());
+            for item in batch {
+                let data = check_input(child, Data::json(item.clone()))?;
+                let started = Instant::now();
+                let mut res = RequestResult { path: req.clone(), ..Default::default() };
+                self.set_call_input(&data, use_folder);
+                let p = self.prepare_request(&req, None, &mut res);
+                self.clear_call_input();
+                prepared.push((res, p, started));
+            }
+            if self.clock.cancelled() {
+                return Err(self.clock.reason().into());
+            }
+            // 2. send at the same time (the HTTP client is thread-safe; scripts are not involved)
+            let http = self.st.borrow().http.clone();
+            let sent: Vec<Option<Result<super::Response, String>>> = std::thread::scope(|scope| {
+                let handles: Vec<_> = prepared.iter().map(|(_, p, _)| p.as_ref().map(|p| scope.spawn(|| http.send(&p.out)))).collect();
+                handles.into_iter().map(|h| h.map(|h| h.join().unwrap_or_else(|_| Err("request thread panicked".into())))).collect()
+            });
+            // 3. finish in order (post-response scripts, tests)
+            for (i, ((mut res, p, started), sent)) in prepared.into_iter().zip(sent).enumerate() {
+                if let (Some(p), Some(sent)) = (p, sent) {
+                    self.finish_request(p, sent, &mut res);
+                }
+                let (tests, logs) = self.drain();
+                res.tests.extend(tests);
+                res.logs.extend(logs);
+                res.duration_ms = started.elapsed().as_millis() as u64;
+                let n = batch_no * limit + i + 1;
+                let mut step = StepResult { node: child.id.clone(), kind: child.kind.clone(), name: format!("{} #{n}", label(child)), port: "out".into(), ..Default::default() };
+                let error = res.error.clone().or_else(|| res.script_errors.first().cloned());
+                let body = res.response.as_ref().map(|r| r.body.clone()).unwrap_or_default();
+                step.duration_ms = res.duration_ms;
+                step.request = Some(res);
+                if let Some(e) = error {
+                    step.error = Some(e.clone());
+                    run.steps.push(step);
+                    return Err(format!("item {n}: {e}"));
+                }
+                let data = serde_json::from_str(&body).map(Data::json).unwrap_or_else(|_| Data::text(body));
+                step.output = data.preview();
+                run.steps.push(step);
+                results.push(data.value);
+            }
+        }
+        Ok(results)
+    }
+
+    fn set_call_input(&self, input: &Data, use_folder: bool) {
+        let mut st = self.st.borrow_mut();
+        st.graph_input = Some(input.value.clone());
+        // JSON fields override folder/collection variables, never the environment
+        st.input_vars = match &input.value {
+            Value::Object(o) if input.kind == "json" => o.iter().map(|(k, v)| (k.clone(), var_text(v))).collect(),
+            _ => BTreeMap::new(),
+        };
+        st.skip_folders = !use_folder;
+    }
+
+    fn clear_call_input(&self) {
+        let mut st = self.st.borrow_mut();
+        st.graph_input = None;
+        st.input_vars.clear();
+        st.skip_folders = false;
+    }
+
     /// Runs compute code / a switch case with `input` in the script sandbox.
     fn js(&self, node: &GraphNode, entry: &str, code: &str, input: &Data) -> Result<Value, String> {
         {
@@ -377,6 +506,15 @@ impl Engine {
         let r = f(&self.st.borrow());
         self.st.borrow_mut().graph_input = None;
         r
+    }
+}
+
+/// A JSON array, or the rows of CSV text.
+fn rows_of(input: &Data) -> Result<Vec<Value>, String> {
+    match (input.kind, &input.value) {
+        ("json", Value::Array(a)) => Ok(a.clone()),
+        ("csv" | "text", Value::String(t)) => Ok(parse_csv(t, &json!({}))?.as_array().cloned().unwrap_or_default()),
+        _ => Err("needs a JSON array or CSV".into()),
     }
 }
 

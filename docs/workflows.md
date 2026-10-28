@@ -10,7 +10,7 @@ name: Sync orders
 nodes:
   - { id: start, type: manual, x: 60, y: 80, payloadType: json, payload: '{"ids": [1, 2, 3]}' }
   - { id: each, type: forEach, input: json, child: get, x: 300, y: 80 }
-  - { id: get, type: call, input: json, request: requests/orders/get.req.yaml, x: 300, y: 240 }
+  - { id: get, type: request, input: json, request: requests/orders/get.req.yaml, x: 300, y: 240 }
   - { id: save, type: writeFile, path: out/orders.json, format: json, x: 560, y: 80 }
   - { id: done, type: return, x: 800, y: 80 }
 edges:
@@ -39,10 +39,15 @@ file) for sending it on its own; when a workflow calls the request, the node inp
 | --- | --- |
 | `manual` | Starter with a play button; its output is the payload (`payloadType` json, csv — rows with a header become JSON objects — or text). |
 | `fromWorkflow` | Starter used when another workflow calls this one; output = the caller's input. |
-| `call` | Runs a collection request. `{{input}}` / `{{input.field}}` work anywhere in the request; top-level fields of a JSON input override folder and collection variables of the same name, never environment values. `useFolder: false` ignores folder variables, headers, auth and scripts. Output = response body (JSON if it parses, else text). |
-| `compute` | JavaScript with `input` (same sandbox as request scripts: `env`, `vars`, `fs`, `csv`, `util`); `return` gives the output, `throw` goes to `err`. |
+| `request` | Runs a collection request. `{{input}}` / `{{input.field}}` work anywhere in the request; top-level fields of a JSON input override folder and collection variables of the same name, never environment values. `useFolder: false` ignores folder variables, headers, auth and scripts. Output = response body (JSON if it parses, else text). |
+| `script` | JavaScript with `input` (same sandbox as request scripts: `env`, `vars`, `fs`, `csv`, `util`); `return` gives the output, `throw` goes to `err`. |
+| `setVar` | Stores `value` (a template, e.g. `{{input.access_token}}`; empty = the whole input) as `variable` in the run variables (`scope: vars`) or the private environment values (`scope: env`). Later requests use it as `{{variable}}`. Passes the input on. |
+| `transform` | Builds the output from `template` — JSON (or text) with `{{input.x}}` and other variables. |
 | `switch` | `cases: [{ name, expr }]`; the first JS expression that is true picks the port `name`, else `default`. The input passes on unchanged. |
-| `forEach` | Iterates a JSON array or CSV and runs the node `child` once per item (the child's own edges are not followed); outputs are collected into a JSON array. |
+| `filter` | Keeps the items of a JSON array or CSV for which `expr` (JS with `item`, `index`) is true. |
+| `forEach` | Iterates a JSON array or CSV and runs the node `child` once per item (the child's own edges are not followed); outputs are collected into a JSON array. `parallel: true` sends Request children at the same time, at most `limit` (default 5) at once; their scripts still run one after another. |
+| `assert` | `checks: [{ expr, message }]` — all JS expressions must be true, else the node goes to `err` (unconnected: the workflow fails, CLI exit code 1). |
+| `delay` | Waits `ms` milliseconds (number or template), then passes the input on. |
 | `loadFile` | Reads `path` (may use `{{input.x}}` and environment values) inside the collection; `parse`: json, csv, text or file. |
 | `writeFile` | Writes JSON or CSV input to `path` inside the collection (`format`: json or csv); passes the input on. |
 | `makeCsv` | JSON array of objects → CSV text. |
