@@ -47,5 +47,9 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
 - **Postman scripts:** imported as comments first; a `pm` compatibility layer comes later on its own
   branch.
 - **OpenAPI sync:** later; the import already records the origin (`operationId`) so a sync is possible.
+- **cURL** (branch `feature/import-curl`): bash/zsh quoting incl. `$'…'`, Windows cmd (`^`),
+  continuations, combined short flags; `Authorization: Bearer/Basic` → auth; JSON bodies pretty-printed,
+  urlencoded → form fields, `-F` → multipart (files must exist in the collection); browser headers
+  (`sec-*`, `priority`, …) imported disabled; `-k`, proxies, `@file` bodies only produce warnings.
 - **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
   writes the files and browser-stored collections work the same; a CLI import would need a Rust port.

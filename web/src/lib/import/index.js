@@ -10,7 +10,9 @@
 // Docs use the shapes of parseRequest()/parseFolder() in format.js, so the
 // one serializer there writes the files.
 
-export const requestImporters = [];
+import { curl } from './curl.js';
+
+export const requestImporters = [curl];
 export const collectionImporters = [];
 
 /** Recognises the pasted text and converts it, or throws with a helpful message. */
