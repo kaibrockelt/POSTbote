@@ -15,9 +15,10 @@
 import { parseYaml } from '../format.js';
 import { curl } from './curl.js';
 import { postman } from './postman.js';
+import { openapi } from './openapi.js';
 
 export const requestImporters = [curl];
-export const collectionImporters = [postman];
+export const collectionImporters = [postman, openapi];
 
 /** Recognises the pasted text and converts it, or throws with a helpful message. */
 export function importRequest(text) {

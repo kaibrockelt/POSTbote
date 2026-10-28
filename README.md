@@ -9,6 +9,8 @@ text files that live in your folder (or your browser) and can be versioned with 
   secrets in `<name>.env` (gitignored)
 - Runners: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
 - JavaScript scripting (QuickJS) before/after requests and before/after runners: read, iterate, write files
+- Import: paste cURL into a new request; Postman collections (v2.x, with environments) and OpenAPI 3.x /
+  Swagger 2.0 as new collections, secrets moved into private environment values
 - Desktop app (Tauri, system webview — no Electron), local browser mode, multi-user Docker server, CLI for CI
 
 ## Run it
