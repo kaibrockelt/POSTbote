@@ -58,5 +58,15 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
   docs/README, scripts as comments; environment values of type `secret` or with secret-like names go
   to the private file. v1 collections are rejected with a hint to export v2.1. Checked against the
   public examples of newman, postman-collection and postman-collection-transformer.
+- **OpenAPI** (branch `feature/import-openapi`): 3.0/3.1/3.2 and Swagger 2.0, JSON or YAML; tags →
+  folders (3.2 `parent` → nested), operations in document order, servers → one environment each
+  (`baseUrl`, server variables filled with their defaults, choices in the README), security schemes →
+  collection or request auth with `{{token}}`/`{{apiKey}}`/`{{username}}`+`{{password}}` declared in
+  every environment (secrets empty in the private file), path parameters → `{{name}}` collection
+  variables with examples, required query/header params on and optional ones off, bodies from
+  examples or generated from schemas (readOnly and recursive properties left out), `$ref` incl.
+  external files selected together with the spec, `operationId` kept in the docs for a later sync;
+  callbacks/webhooks are skipped with a warning. Checked against the OAI and learn.openapis.org
+  examples and the Swagger Petstore v3.
 - **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
   writes the files and browser-stored collections work the same; a CLI import would need a Rust port.
