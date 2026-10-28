@@ -225,9 +225,11 @@ function convertBody(b, headers, where, ctx) {
       ctx.warnings.add(`${where}: GraphQL is imported as a JSON body ({ query, variables })`);
       return { type: 'json', content: JSON.stringify({ query: str(b.graphql?.query), variables }, null, 2), fields: [] };
     }
-    case 'file':
-      ctx.warnings.add(`${where}: binary file bodies are not supported`);
-      return none;
+    case 'file': {
+      const src = str(b.file?.src).split(/[\\/]/).pop();
+      ctx.warnings.add(`${where}: put the body file${src ? ` “${src}”` : ''} into the collection and set its path`);
+      return { type: 'file', content: '', fields: [], file: src || '' };
+    }
     default:
       ctx.warnings.add(`${where}: body mode “${b.mode}” is not supported`);
       return none;

@@ -24,6 +24,8 @@ pub struct OutReq {
 pub enum OutBody {
     None,
     Raw(String),
+    /// raw bytes of a file (body type file)
+    Bytes(Vec<u8>),
     Form(Vec<(String, String)>),
     Multipart(Vec<Part>),
 }
@@ -32,7 +34,7 @@ pub struct Part {
     pub name: String,
     pub value: String,
     /// (file name, content) for file fields
-    pub file: Option<(String, String)>,
+    pub file: Option<(String, Vec<u8>)>,
 }
 
 pub struct Http {
@@ -80,13 +82,14 @@ impl Http {
         rb = match &r.body {
             OutBody::None => rb,
             OutBody::Raw(s) => rb.body(s.clone()),
+            OutBody::Bytes(b) => rb.body(b.clone()),
             OutBody::Form(fields) => rb.form(fields),
             OutBody::Multipart(parts) => {
                 let mut form = multipart::Form::new();
                 for p in parts {
                     form = match &p.file {
                         Some((fname, content)) => {
-                            form.part(p.name.clone(), multipart::Part::bytes(content.clone().into_bytes()).file_name(fname.clone()))
+                            form.part(p.name.clone(), multipart::Part::bytes(content.clone()).file_name(fname.clone()))
                         }
                         None => form.text(p.name.clone(), p.value.clone()),
                     };

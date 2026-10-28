@@ -42,7 +42,8 @@ const isJson = (r) => r.body.type === 'json' && (() => {
     return false;
   }
 })();
-const hasBody = (r) => r.body.type !== 'none';
+const hasBody = (r) => r.body.type !== 'none' && r.body.type !== 'file';
+const fileBody = (r) => (r.body.type === 'file' && r.body.file ? r.body.file : '');
 const indent = (text, pad) => text.split('\n').join('\n' + pad);
 
 function curl(r) {
@@ -54,6 +55,7 @@ function curl(r) {
   };
   if (r.body.type === 'form') r.body.fields.forEach((f) => add(`--data-urlencode ${sh(`${f.key}=${f.value}`)}`));
   else if (r.body.type === 'multipart') r.body.fields.forEach((f) => add(`--form ${sh(f.file ? `${f.key}=@${f.file}` : `${f.key}=${f.value}`)}`));
+  else if (fileBody(r)) add(`--data-binary ${sh('@' + fileBody(r))}`);
   else if (hasBody(r)) add(`--data-raw ${sh(r.body.content)}`);
   return lines.join('\n');
 }
@@ -73,6 +75,7 @@ function guzzle(r) {
         .map((f) => `        ['name' => ${php(f.key)}, 'contents' => ${f.file ? `fopen(${php(f.file)}, 'r')` : php(f.value)}],`)
         .join('\n')}\n    ]`,
     ]);
+  else if (fileBody(r)) opts.push(['body', `fopen(${php(fileBody(r))}, 'r')`]);
   else if (hasBody(r)) opts.push(['body', php(r.body.content)]);
   return `<?php
 // composer require guzzlehttp/guzzle
@@ -97,6 +100,7 @@ function phpCurl(r) {
   if (r.body.type === 'form') o.push(['CURLOPT_POSTFIELDS', `http_build_query(${phpArray(r.body.fields.map((f) => [f.key, php(f.value)]), '    ')})`]);
   else if (r.body.type === 'multipart')
     o.push(['CURLOPT_POSTFIELDS', phpArray(r.body.fields.map((f) => [f.key, f.file ? `new CURLFile(${php(f.file)})` : php(f.value)]), '    ')]);
+  else if (fileBody(r)) o.push(['CURLOPT_POSTFIELDS', `file_get_contents(${php(fileBody(r))})`]);
   else if (hasBody(r)) o.push(['CURLOPT_POSTFIELDS', php(r.body.content)]);
   return `<?php
 $ch = curl_init();
@@ -121,6 +125,7 @@ function nodeBody(r, lib) {
   if (r.body.type === 'form') {
     return [`const body = new URLSearchParams(${jsObject(r.body.fields.map((f) => [f.key, js(f.value)]), '')});\n`, 'body'];
   }
+  if (fileBody(r)) return ["import { readFile } from 'node:fs/promises';\n", `await readFile(${js(fileBody(r))})`];
   if (r.body.type === 'multipart') {
     const files = r.body.fields.some((f) => f.file);
     const lines = [files ? "import { openAsBlob } from 'node:fs';\n" : '', 'const body = new FormData();'];
@@ -209,6 +214,9 @@ function python(r, lib) {
       lines.push(`files = ${pyDict(files.map((f) => [f.key, `open(${py(f.file)}, "rb")`]))}`);
       args.push('files=files');
     }
+  } else if (fileBody(r)) {
+    lines.push(`payload = open(${py(fileBody(r))}, "rb")`);
+    args.push(lib === 'httpx' ? 'content=payload' : 'data=payload');
   } else if (hasBody(r)) {
     if (isJson(r)) {
       lines.push(`payload = ${pyLiteral(JSON.parse(r.body.content))}`);

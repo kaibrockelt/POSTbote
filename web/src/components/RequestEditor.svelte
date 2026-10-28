@@ -98,12 +98,17 @@
           <p class="hint">Collection and folder headers are inherited; a header with the same name here overrides them.</p>
         {:else if tab === 'body'}
           <div class="row body-types">
-            {#each ['none', 'json', 'text', 'xml', 'form', 'multipart'] as t}
+            {#each ['none', 'json', 'text', 'xml', 'form', 'multipart', 'file'] as t}
               <label class="check"><input type="radio" bind:group={d.doc.body.type} value={t} /> {t}</label>
             {/each}
           </div>
           {#if d.doc.body.type === 'form' || d.doc.body.type === 'multipart'}
             <KvTable bind:rows={d.doc.body.fields} withFile={d.doc.body.type === 'multipart'} keyPlaceholder="Field" />
+          {:else if d.doc.body.type === 'file'}
+            <VarField class="mono" bind:value={d.doc.body.file} placeholder="data/upload.png" />
+            <p class="hint">
+              A file inside the collection folder, sent as the raw body (binary files are fine). Content-Type follows the extension unless you set the header.
+            </p>
           {:else if d.doc.body.type !== 'none'}
             <VarField class="mono" multiline bind:value={d.doc.body.content} rows={14} placeholder={d.doc.body.type === 'json' ? '{\n  "name": "{{name}}"\n}' : ''} />
           {/if}
