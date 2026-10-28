@@ -10,10 +10,14 @@ import { Resvg } from '@resvg/resvg-js';
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '../../desktop/icons');
 const glyph = readFileSync(join(dir, 'src/glyph.svg'), 'utf8').replace(/<!--.*?-->/s, '');
-const BLUE = '#2f6fed';
+const BLUE = '#1169f7';
+// the glyph is drawn on a tile at 125…1130 (1005 units) with corner radius 250
+const TILE = 1005;
+const place = (x, size) => `translate(${x} ${x}) scale(${size / TILE}) translate(-125 -125)`;
 
-const fullBleed = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="7" fill="${BLUE}"/>${glyph}</svg>`;
+const fullBleed = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" rx="${(250 * 1024) / TILE}" fill="${BLUE}"/>
+  <g transform="${place(0, 1024)}">${glyph}</g></svg>`;
 
 const macos = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <defs>
@@ -24,8 +28,8 @@ const macos = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
   </defs>
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="${BLUE}" filter="url(#shadow)"/>
-  <g transform="translate(100 100) scale(25.75) translate(16 16.5) scale(0.84) translate(-16 -16.5)">${glyph}</g>
+  <rect x="100" y="100" width="824" height="824" rx="${(250 * 824) / TILE}" fill="${BLUE}" filter="url(#shadow)"/>
+  <g transform="${place(100, 824)}">${glyph}</g>
 </svg>`;
 
 const png = (svg, size) => new Resvg(svg, { fitTo: { mode: 'width', value: size }, background: 'rgba(0,0,0,0)' }).render().asPng();

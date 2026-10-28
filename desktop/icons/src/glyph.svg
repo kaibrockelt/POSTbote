@@ -1,13 +1,17 @@
-<!-- postman glyph, 32x32 units, white on transparent -->
-<g>
-  <g fill="#fff" stroke="#2f6fed" stroke-width="1.1" stroke-linejoin="round" paint-order="stroke">
-    <path d="M7 28c0-5.4 3.1-9 7-9s7 3.6 7 9z"/>
-    <circle cx="14" cy="14.6" r="3.6"/>
-    <path d="M9.3 11.6V9.4c0-1.9 2.1-3.4 4.7-3.4s4.7 1.5 4.7 3.4v2.2z"/>
-    <path d="M9.3 11.3h10.6c1.3 0 2.3.5 2.3 1.2H9.3z"/>
-  </g>
-  <g transform="rotate(-10 21 22.5)">
-    <rect x="15.6" y="19.2" width="10.8" height="7.2" rx="1.1" fill="#fff" stroke="#2f6fed" stroke-width="1.3"/>
-    <path d="M16.5 20.1l4.6 3.2 4.6-3.2" fill="none" stroke="#2f6fed" stroke-width="1.15" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+<!-- running postman glyph, drawn in the coordinates of the original 1254 px artwork:
+     the blue tile spans x/y 125…1130 (1005 units, corner radius 250); build-icons.mjs places it -->
+<g stroke-linecap="round" stroke-linejoin="round">
+  <!-- speed lines -->
+  <path d="M274 645L421 617M266 733L436 707" stroke="#fff" stroke-width="44" fill="none"/>
+  <!-- legs -->
+  <path d="M790 762L895 945L992 884" stroke="#1a2e55" stroke-width="74" fill="none"/>
+  <path d="M652 790C628 856 596 877 548 877L452 877L407 948" stroke="#1a2e55" stroke-width="58" fill="none"/>
+  <!-- envelope -->
+  <path d="M520 569L900 546L926 576L945 750L546 824L530 820L503 608Z" fill="#fff" stroke="#fff" stroke-width="12"/>
+  <path d="M503 590L745 710L925 556" stroke="#1169f7" stroke-width="32" fill="none"/>
+  <!-- cap -->
+  <path d="M462 524C438 488 470 446 560 392C680 322 840 270 920 288C962 300 954 360 916 436C800 446 640 482 522 542C492 548 470 538 462 524Z" fill="#fedb2b"/>
+  <circle cx="842" cy="373" r="33" stroke="#1a2e55" stroke-width="17" fill="none"/>
+  <path d="M779 359C789 399 813 413 842 413C872 413 895 396 901 345" stroke="#1a2e55" stroke-width="20" fill="none"/>
+  <path d="M514 553C600 500 740 448 860 440C930 446 980 474 1000 498C994 516 950 536 884 541C760 548 620 544 514 553Z" fill="#1a2e55"/>
 </g>

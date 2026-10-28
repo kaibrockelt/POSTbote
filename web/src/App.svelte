@@ -106,7 +106,7 @@
 {:else}
   <div class="layout">
     <header class="topbar">
-      <div class="brand"><img src="/favicon.svg" alt="" width="20" height="20" /> POSTBote</div>
+      <div class="brand"><img src="/favicon.svg" alt="" width="30" height="30" /> POSTBote</div>
       <div class="grow"></div>
       <span class="muted small saving">{app.saving ? 'Saving…' : ''}</span>
       {#if app.ws}
