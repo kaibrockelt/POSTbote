@@ -11,8 +11,10 @@
 // Docs use the shapes of parseRequest()/parseFolder() in format.js, so the
 // one serializer there writes the files (build.js for collections).
 
+import { postman } from './postman.js';
+
 export const requestImporters = [];
-export const collectionImporters = [];
+export const collectionImporters = [postman];
 
 /** Recognises the pasted text and converts it, or throws with a helpful message. */
 export function importRequest(text) {

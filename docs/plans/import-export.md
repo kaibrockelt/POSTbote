@@ -47,5 +47,12 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
 - **Postman scripts:** imported as comments first; a `pm` compatibility layer comes later on its own
   branch.
 - **OpenAPI sync:** later; the import already records the origin (`operationId`) so a sync is possible.
+- **Postman** (branch `feature/import-postman`): collection v2.0/v2.1 plus environment/globals files
+  chosen together; folders, order (`seq`), collection/folder/request auth (bearer, basic, apikey;
+  oauth2 → bearer with its access token; others inherit with a warning), `:id` path variables →
+  `{{id}}` with collection-variable defaults, raw/urlencoded/formdata/graphql bodies, descriptions →
+  docs/README, scripts as comments; environment values of type `secret` or with secret-like names go
+  to the private file. v1 collections are rejected with a hint to export v2.1. Checked against the
+  public examples of newman, postman-collection and postman-collection-transformer.
 - **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
   writes the files and browser-stored collections work the same; a CLI import would need a Rust port.
