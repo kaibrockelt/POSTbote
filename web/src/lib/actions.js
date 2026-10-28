@@ -18,7 +18,11 @@ import {
   envPrivatePath,
   listEnvs,
   emptyRequest,
+  GRAPH_EXT,
+  parseGraph,
+  serializeGraph,
 } from './format.js';
+import { newGraphDoc } from './graph.js';
 import { app, ask, confirmAction, askRemove, canTrash, trashPaths, write, removeFile, renameFile, select, setEnv, fail, toast, contentOf, setDraft } from './state.svelte.js';
 import { requestImporters } from './import/index.js';
 import { importRequestInto, hasSecrets } from './import/apply.js';
@@ -201,6 +205,25 @@ export const deleteFolder = guard(async (dir, mode) => {
 export const deleteFile = guard(async (path, label, mode) => {
   if (!(await discard(`Remove “${label || basename(path)}”?`, path, { files: [path], mode }))) return;
   if (app.selected?.path === path) select(null);
+});
+
+export const newGraph = guard(async () => {
+  const name = await ask('New workflow', '', { placeholder: 'e.g. Sync orders' });
+  if (!name) return;
+  const path = uniquePath(app.files, 'workflows', slug(name), GRAPH_EXT);
+  write(path, serializeGraph(newGraphDoc(name)));
+  select({ kind: 'graph', path });
+});
+
+export const renameGraph = guard(async (path) => {
+  const { doc } = parseGraph(app.files[path]);
+  if (!doc) throw new Error('fix the YAML of this workflow first');
+  const name = await ask('Rename workflow', doc.name);
+  if (!name || name === doc.name) return;
+  doc.name = name;
+  write(path, serializeGraph(doc));
+  const to = uniquePath({ ...app.files, [path]: undefined }, dirname(path), slug(name), GRAPH_EXT);
+  if (to !== path) await renameFile(path, to);
 });
 
 export const newWorkflow = guard(async () => {

@@ -130,6 +130,35 @@
 
     <div class="section">
       <div class="section-head">
+        <button class="head-toggle" aria-expanded={open('graphs')} onclick={() => toggleCollapsed('section:graphs')}>
+          <span class="caret">{open('graphs') ? '▾' : '▸'}</span>Workflows
+          {#if !open('graphs')}<span class="count">{tree.graphs.length}</span>{/if}
+        </button>
+        <span class="actions"><button class="icon" title="New workflow" onclick={act.newGraph}>＋</button></span>
+      </div>
+      {#each open('graphs') ? tree.graphs : [] as g (g.path)}
+        <div class="item" class:selected={sel('graph', g.path)} role="treeitem" aria-selected={sel('graph', g.path)} tabindex="-1"
+          oncontextmenu={(ev) => openMenu(ev, [
+            { label: 'Open', action: () => select({ kind: 'graph', path: g.path }) },
+            { label: 'Rename…', action: () => act.renameGraph(g.path) },
+            { separator: true },
+            ...act.removeItems((mode) => act.deleteFile(g.path, g.name, mode)),
+          ])}>
+          <button class="label" onclick={() => select({ kind: 'graph', path: g.path })}>
+            ◇ {g.name}
+            {#if isDirty(g.path)}<span class="unsaved" title="unsaved changes">●</span>{/if}
+            {#if app.running[g.path]}<span class="spinner"></span>{/if}
+          </button>
+          <span class="actions">
+            <button class="icon" title="Rename" onclick={() => act.renameGraph(g.path)}>✎</button>
+            <button class="icon" title="Delete or move to trash" onclick={() => act.deleteFile(g.path, g.name)}><Icon name="trash" size={13} /></button>
+          </span>
+        </div>
+      {/each}
+    </div>
+
+    <div class="section">
+      <div class="section-head">
         <button class="head-toggle" aria-expanded={open('envs')} onclick={() => toggleCollapsed('section:envs')}>
           <span class="caret">{open('envs') ? '▾' : '▸'}</span>Environments
           {#if !open('envs')}<span class="count">{tree.envs.length}</span>{/if}

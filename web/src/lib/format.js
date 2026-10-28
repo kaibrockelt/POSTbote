@@ -6,6 +6,7 @@ export const MANIFEST = 'postbote.yaml';
 export const FOLDER_FILE = '_folder.yaml';
 export const REQ_EXT = '.req.yaml';
 export const RUNNER_EXT = '.runner.yaml';
+export const GRAPH_EXT = '.workflow.yaml';
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
 export function parseYaml(text) {
@@ -225,6 +226,28 @@ export function serializeCollection(c) {
       scripts: cleanScripts(c.scripts),
     }),
   );
+}
+
+// ------------------------------------------------------------ node workflow
+
+const NODE_KEYS = ['id', 'type', 'name', 'input', 'x', 'y'];
+
+export function parseGraph(text) {
+  const { doc, error } = parseYaml(text);
+  if (error) return { doc: null, error };
+  const nodes = (Array.isArray(doc.nodes) ? doc.nodes : []).filter((n) => n && n.id).map((n) => ({ ...n, id: str(n.id), type: str(n.type), x: Number(n.x) || 0, y: Number(n.y) || 0 }));
+  const edges = (Array.isArray(doc.edges) ? doc.edges : []).filter((e) => e && e.from && e.to).map((e) => ({ from: str(e.from), out: str(e.out) || 'out', to: str(e.to) }));
+  return { error: null, doc: { name: str(doc.name), nodes, edges } };
+}
+
+export function serializeGraph(g) {
+  const node = (n) => {
+    const out = {};
+    for (const k of NODE_KEYS) if (!isEmpty(n[k]) || k === 'x' || k === 'y') out[k] = k === 'x' || k === 'y' ? Math.round(n[k] || 0) : n[k];
+    for (const [k, v] of Object.entries(n)) if (!NODE_KEYS.includes(k) && !isEmpty(v)) out[k] = v;
+    return out;
+  };
+  return dump(prune({ name: g.name, nodes: g.nodes.map(node), edges: g.edges.map((e) => ({ from: e.from, out: e.out || 'out', to: e.to })) }));
 }
 
 // ------------------------------------------------------------ runner

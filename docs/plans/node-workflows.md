@@ -1,6 +1,7 @@
 # Plan: Node-based workflows (not started)
 
-Status: idea captured 2026-10-28, nothing implemented yet.
+Status: first version on branch `feature/workflows` (2026-10-28): engine, canvas editor, CLI; see `docs/workflows.md`.
+Still open: forEach `async`, For i, While, the request "Inputs" tab, Listen for request, zoom.
 
 ## Terminology change
 

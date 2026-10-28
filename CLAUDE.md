@@ -43,4 +43,4 @@ Full list of planned topics: `docs/plans/roadmap.md`.
 
 `docs/plans/import-export.md` – phase 1: cURL paste import with secret detection, Postman v2.1, OpenAPI. Open questions listed there.
 
-Terminology: request chains over data rows are **runners** (`runners/**/*.runner.yaml`; internally still `workflow`: kind, `Target::Workflow`, `WorkflowEditor`, script object `wf`). "Workflows" means the planned node-based builder (Node-RED/n8n style) in `docs/plans/node-workflows.md`. Not implemented yet; open questions listed there.
+Terminology: request chains over data rows are **runners** (`runners/**/*.runner.yaml`; internally still `workflow`: kind, `Target::Workflow`, `WorkflowEditor`, script object `wf`). **Workflows** are the node-based flows (`workflows/**/*.workflow.yaml`, internally `graph`: `runner/graph.rs`, `Target::Graph`, `GraphEditor`, tab kind `graph`), see `docs/workflows.md`; later steps in `docs/plans/node-workflows.md`.

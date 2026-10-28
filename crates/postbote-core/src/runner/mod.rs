@@ -160,6 +160,7 @@ impl RunOutput {
         self.error.is_some()
             || self.request.as_ref().is_some_and(|r| r.failed())
             || self.workflow.as_ref().is_some_and(|w| w.error.is_some() || !w.script_errors.is_empty() || w.failed > 0)
+            || self.graph.as_ref().is_some_and(|g| g.error.is_some())
     }
 }
 

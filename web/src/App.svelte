@@ -2,6 +2,7 @@
   import Sidebar from './components/Sidebar.svelte';
   import RequestEditor from './components/RequestEditor.svelte';
   import WorkflowEditor from './components/WorkflowEditor.svelte';
+  import GraphEditor from './components/GraphEditor.svelte';
   import EnvEditor from './components/EnvEditor.svelte';
   import CollectionEditor from './components/CollectionEditor.svelte';
   import FolderEditor from './components/FolderEditor.svelte';
@@ -76,7 +77,7 @@
         if (app.ws && app.ws.storage !== 'browser') reload().then(() => toast('Reloaded')).catch(fail);
         break;
       case 'enter': // run (or cancel) whatever the open tab can run
-        if (t?.kind !== 'request' && t?.kind !== 'workflow') break;
+        if (t?.kind !== 'request' && t?.kind !== 'workflow' && t?.kind !== 'graph') break;
         e.preventDefault();
         if (app.running[t.path]) cancelRun(t.path);
         else run(t.kind, t.path);
@@ -146,6 +147,7 @@
           {#key `${sel.kind}:${sel.path}`}
             {#if sel.kind === 'request'}<RequestEditor path={sel.path} />
             {:else if sel.kind === 'workflow'}<WorkflowEditor path={sel.path} />
+            {:else if sel.kind === 'graph'}<GraphEditor path={sel.path} />
             {:else if sel.kind === 'env'}<EnvEditor path={sel.path} />
             {:else if sel.kind === 'collection'}<CollectionEditor />
             {:else if sel.kind === 'folder'}<FolderEditor path={sel.path} />

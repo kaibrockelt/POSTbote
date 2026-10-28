@@ -1,6 +1,6 @@
 // Derives the sidebar structure from the flat file map.
 import YAML from 'yaml';
-import { RUNNER_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename, listEnvs } from './format.js';
+import { RUNNER_EXT, GRAPH_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename, listEnvs } from './format.js';
 
 const metaCache = new Map(); // text -> { name, method }
 
@@ -33,6 +33,7 @@ export function buildTree(files) {
     return f;
   };
   const workflows = [];
+  const graphs = [];
   const envs = [];
   const other = [];
   for (const [path, text] of Object.entries(files)) {
@@ -53,6 +54,9 @@ export function buildTree(files) {
     } else if (path.startsWith('runners/') && path.endsWith(RUNNER_EXT)) {
       workflows.push({ path, ...meta(text, basename(path).slice(0, -RUNNER_EXT.length)) });
       continue;
+    } else if (path.startsWith('workflows/') && path.endsWith(GRAPH_EXT)) {
+      graphs.push({ path, ...meta(text, basename(path).slice(0, -GRAPH_EXT.length)) });
+      continue;
     } else if (isEnvFile(path)) {
       continue;
     } else if (path === 'postbote.yaml') {
@@ -68,9 +72,10 @@ export function buildTree(files) {
   };
   sort(root);
   workflows.sort(byOrder);
+  graphs.sort(byOrder);
   envs.push(...listEnvs(files));
   other.sort();
-  return { root, workflows, envs, other };
+  return { root, workflows, graphs, envs, other };
 }
 
 export function allRequests(files) {

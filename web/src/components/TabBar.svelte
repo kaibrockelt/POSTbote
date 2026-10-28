@@ -10,7 +10,7 @@
     const m = String(parseYaml(app.drafts[t.path] ?? app.files[t.path] ?? '').doc?.method || 'GET').toUpperCase();
     return m === 'DELETE' ? 'DEL' : m === 'OPTIONS' ? 'OPT' : m;
   }
-  const icon = { workflow: '⇶', env: '◉', folder: '📁', collection: '⚙', file: '📄' };
+  const icon = { workflow: '⇶', graph: '◇', env: '◉', folder: '📁', collection: '⚙', file: '📄' };
 
   const guard = (fn) => () => fn().catch(fail);
 

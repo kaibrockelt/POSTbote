@@ -175,7 +175,13 @@ fn run_cli(dir: PathBuf, path: String, env: Option<String>) -> Result<RunOutput>
             Some(name)
         }
     };
-    let target = if path.ends_with(postbote_core::model::RUNNER_EXT) { Target::Workflow(path) } else { Target::Request(path) };
+    let target = if path.ends_with(postbote_core::model::RUNNER_EXT) {
+        Target::Workflow(path)
+    } else if path.ends_with(postbote_core::model::GRAPH_EXT) {
+        Target::Graph(path, None)
+    } else {
+        Target::Request(path)
+    };
     Ok(runner::run(Box::new(fs), target, RunOptions { env, ..Default::default() }))
 }
 
@@ -233,6 +239,28 @@ fn print_output(out: &RunOutput) {
             println!("  error: {e}");
         }
         println!("tests: {} passed, {} failed ({} ms)", w.passed, w.failed, w.duration_ms);
+    }
+    if let Some(g) = &out.graph {
+        println!("workflow {}", g.name);
+        for s in &g.steps {
+            let what = if s.name.is_empty() { format!("{} {}", s.kind, s.node) } else { s.name.clone() };
+            println!("  {} {what} → {}", mark(s.error.is_none()), s.port);
+            if let Some(r) = &s.request {
+                print_request(r, "    ");
+            }
+            if let Some(e) = &s.error {
+                println!("    {e}");
+            }
+        }
+        for l in &g.logs {
+            println!("  [{}] {}", l.level, l.message);
+        }
+        match (&g.error, &g.result) {
+            (Some(e), _) => println!("  error: {e}"),
+            (None, Some(v)) => println!("  result: {v}"),
+            _ => {}
+        }
+        println!("({} ms)", g.duration_ms);
     }
     if let Some(e) = &out.error {
         println!("error: {e}");
