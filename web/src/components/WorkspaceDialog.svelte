@@ -3,6 +3,7 @@
   import { app, createWorkspace, pickFolder, fail, toast } from '../lib/state.svelte.js';
   import { slug, parseYaml, MANIFEST } from '../lib/format.js';
   import { collectionImporters, importCollection } from '../lib/import/index.js';
+  import { buildCollectionFiles, countSecrets } from '../lib/import/build.js';
 
   let { onclose } = $props();
   const local = app.info.mode === 'local';
@@ -12,7 +13,10 @@
   let name = $state('');
   let storage = $state('browser');
   let folder = $state('');
-  let imported = $state(null); // { files, skipped, name, format?, warnings? }
+  let imported = $state(null); // zip: { files, skipped, name }; other formats: { result, format, name, warnings, secrets }
+  let secretsEnv = $state(''); // '' = keep, NEW_ENV = new environment named newEnvName, else an imported environment
+  let newEnvName = $state('default');
+  const NEW_ENV = '\0new';
   const formats = ['POSTBote zip', ...collectionImporters.map((i) => i.label)].join(', ');
   const accept = ['.zip', ...collectionImporters.flatMap((i) => i.accept || [])].join(',');
   let busy = $state(false);
@@ -26,14 +30,18 @@
   }
 
   async function onfile(e) {
-    const file = e.currentTarget.files[0];
-    if (!file) return;
+    const chosen = [...e.currentTarget.files];
+    if (!chosen.length) return;
+    imported = null;
     try {
-      if (!/\.zip$/i.test(file.name)) {
-        // foreign formats are converted in the browser into a new collection
-        const res = importCollection(await file.text(), file.name);
-        imported = { ...res, skipped: [] };
-        if (!name) name = res.name;
+      const file = chosen.find((f) => /\.zip$/i.test(f.name));
+      if (!file) {
+        // foreign formats are converted in the browser; several files may
+        // belong together (a collection and its environments)
+        const res = importCollection(await Promise.all(chosen.map(async (f) => ({ name: f.name, text: await f.text() }))));
+        imported = { result: res, format: res.format, name: res.name, warnings: res.warnings, secrets: countSecrets(res) };
+        secretsEnv = '';
+        name = res.name || name;
         return;
       }
       const res = await api.importZip(file);
@@ -50,7 +58,13 @@
     e.preventDefault();
     busy = true;
     try {
-      const files = mode === 'import' ? imported?.files : undefined;
+      let files = mode === 'import' ? imported?.files : undefined;
+      if (mode === 'import' && imported?.result) {
+        const env = secretsEnv === NEW_ENV ? newEnvName.trim() || 'default' : secretsEnv;
+        const built = buildCollectionFiles({ ...imported.result, name: name || imported.name }, { secretsEnv: env });
+        files = built.files;
+        for (const n of built.notes) toast(n);
+      }
       if (!local) {
         await createWorkspace({ name: name || imported?.name || 'New collection', storage, files });
       } else if (mode === 'open') {
@@ -89,16 +103,37 @@
       <p class="hint">For collections outside your collections folder, e.g. inside a project repository. Files stay where they are.</p>
     {:else}
       {#if mode === 'import'}
-        <label class="field"><span>File ({formats})</span><input type="file" {accept} onchange={onfile} /></label>
-        {#if imported}
+        <label class="field">
+          <span>File ({formats}) – select environment files together with the collection</span>
+          <input type="file" {accept} multiple onchange={onfile} />
+        </label>
+        {#if imported?.result}
+          {@const r = imported.result}
           <p class="muted">
-            {imported.format ? `${imported.format}: ` : ''}{Object.keys(imported.files).length} files{imported.skipped.length ? `, ${imported.skipped.length} skipped (binary/invalid)` : ''}
+            {imported.format}: {r.requests.length} requests{r.folders.length ? `, ${r.folders.length} folders` : ''}{r.environments?.length
+              ? `, environments: ${r.environments.map((e) => e.name).join(', ')}`
+              : ''}
           </p>
-          {#if imported.warnings?.length}
-            <ul class="warnings">
-              {#each imported.warnings as w}<li>{w}</li>{/each}
-            </ul>
+          {#if imported.secrets}
+            <label class="target row gap">
+              <span class="muted small">{imported.secrets} token{imported.secrets > 1 ? 's/keys' : '/key'} in requests – store in</span>
+              <select bind:value={secretsEnv}>
+                <option value="">Nowhere (keep them in the requests)</option>
+                <option value={NEW_ENV}>New environment…</option>
+                {#each r.environments || [] as env (env.name)}<option value={env.name}>{env.name}</option>{/each}
+              </select>
+              {#if secretsEnv === NEW_ENV}<input class="env-name" bind:value={newEnvName} placeholder="environment name" />{/if}
+            </label>
           {/if}
+        {:else if imported}
+          <p class="muted">
+            {Object.keys(imported.files).length} files{imported.skipped.length ? `, ${imported.skipped.length} skipped (binary/invalid)` : ''}
+          </p>
+        {/if}
+        {#if imported?.warnings?.length}
+          <ul class="warnings">
+            {#each imported.warnings as w}<li>{w}</li>{/each}
+          </ul>
         {/if}
       {/if}
       <label class="field"><span>Name</span><input bind:value={name} placeholder="My API" /></label>
@@ -141,6 +176,13 @@
   }
   .disabled {
     opacity: 0.5;
+  }
+  .target {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .env-name {
+    width: 140px;
   }
   .warnings {
     margin: 0;

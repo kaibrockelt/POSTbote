@@ -3,12 +3,13 @@
 //
 // - request importers: text pasted into "New request" → one request doc
 //     { id, label, detect(text) → bool, parse(text) → { doc, warnings } }
-// - collection importers: a file in "Add a collection" → a new collection
-//     { id, label, accept, detect(text, fileName) → bool,
-//       parse(text, fileName) → { name, files, warnings } }
+// - collection importers: files chosen in "Add a collection" → a new collection
+//     { id, label, accept: ['.json'], detect(input) → bool,
+//       parse(inputs) → result (see build.js) }
+//     inputs: [{ name, text, json? }] – one collection plus e.g. environments
 //
 // Docs use the shapes of parseRequest()/parseFolder() in format.js, so the
-// one serializer there writes the files.
+// one serializer there writes the files (build.js for collections).
 
 export const requestImporters = [];
 export const collectionImporters = [];
@@ -22,11 +23,19 @@ export function importRequest(text) {
   return { format: imp.label, doc, warnings };
 }
 
-export function importCollection(text, fileName = '') {
-  const imp = collectionImporters.find((i) => i.detect(text, fileName));
+/** inputs: [{ name, text }]; JSON files are parsed once for all detectors. */
+export function importCollection(inputs) {
+  const all = inputs.map((i) => {
+    try {
+      return { ...i, json: JSON.parse(i.text) };
+    } catch {
+      return { ...i, json: undefined };
+    }
+  });
+  const imp = collectionImporters.find((i) => all.some((x) => i.detect(x)));
   if (!imp) throw new Error(`Unrecognised file. Supported: ${collectionImporters.map((i) => i.label).join(', ')}.`);
-  const { name, files, warnings = [] } = imp.parse(text, fileName);
-  return { format: imp.label, name, files, warnings };
+  const result = imp.parse(all);
+  return { format: imp.label, warnings: [], ...result };
 }
 
 /** Request name from method and URL path, e.g. "GET users/{id}". */
