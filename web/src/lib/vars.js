@@ -9,19 +9,20 @@ import {
   parseFolder,
   parseEnv,
   parseWorkflow,
-  envName,
-  isPublicEnv,
+  envPublicPath,
+  envPrivatePath,
 } from './format.js';
 
 export const VAR_RE = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
 export const BUILTINS = ['$uuid', '$guid', '$timestamp', '$timestampMs', '$isoTimestamp', '$randomInt'];
 
-/** source: 'collection' | 'folder' | 'env' | 'runtime' | 'builtin' */
+/** source: 'collection' | 'folder' | 'envpub' | 'env' | 'runtime' | 'builtin' */
 export const SOURCE_LABEL = {
   collection: 'Collection variable',
   folder: 'Folder variable',
-  env: 'Environment variable',
+  envpub: 'Environment variable (shared)',
+  env: 'Environment variable (private)',
   runtime: 'Set at runtime (script or workflow data)',
   builtin: 'Built-in dynamic value',
   missing: 'Unresolved',
@@ -55,9 +56,9 @@ const SET_RE = /vars\.set\(\s*['"`]([^'"`]+)['"`]/g;
 
 /**
  * Map name -> { name, value, source, label, masked } for the request at
- * `reqPath` (folder chain) with the environment file `envPath` active.
+ * `reqPath` (folder chain) with the environment `env` (name) active.
  */
-export function variableScope(files, envPath, reqPath = '') {
+export function variableScope(files, env, reqPath = '') {
   const m = new Map();
   const put = (name, value, source, label, masked = false) => m.set(name, { name, value, source, label, masked });
 
@@ -67,8 +68,12 @@ export function variableScope(files, envPath, reqPath = '') {
     if (!text) continue;
     for (const v of parseFolder(text).doc?.variables || []) if (v.key) put(v.key, v.value, 'folder', `Folder ${dir.replace(/^requests\/?/, '') || '/'}`);
   }
-  if (envPath && files[envPath] != null) {
-    for (const v of parseEnv(files[envPath])) put(v.key, v.value, 'env', `Environment ${envName(envPath)}`, !isPublicEnv(envPath));
+  if (env) {
+    const pub = files[envPublicPath(env)];
+    const priv = files[envPrivatePath(env)];
+    if (pub != null) for (const v of parseEnv(pub)) put(v.key, v.value, 'envpub', `${env} (shared)`);
+    // private values override; an empty private value does not hide a shared one
+    if (priv != null) for (const v of parseEnv(priv)) if (v.value !== '' || !m.has(v.key) || m.get(v.key).source !== 'envpub') put(v.key, v.value, 'env', `${env} (private)`, true);
   }
 
   // names that only exist at runtime: vars.set(...) in scripts, workflow data columns
@@ -103,7 +108,7 @@ export function tokenize(text, scope) {
 export function interpolate(text, scope) {
   return String(text ?? '').replace(VAR_RE, (m, n) => {
     const v = scope.get(n.trim());
-    return v && ['collection', 'folder', 'env'].includes(v.source) ? v.value : m;
+    return v && ['collection', 'folder', 'envpub', 'env'].includes(v.source) ? v.value : m;
   });
 }
 

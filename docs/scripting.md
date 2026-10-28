@@ -60,7 +60,8 @@ vars.interpolate('{{baseUrl}}/x');
 collection.name; collection.vars;
 ```
 
-`env.set` persists to the active environment file when the run ends. `vars` hold any JSON value and
+`env.set` persists to the private file of the active environment (`environments/<name>.env`,
+gitignored) when the run ends; `env.get` sees shared and private values merged. `vars` hold any JSON value and
 live for one run (a request run, or a whole workflow) — the right place for tokens you do not want
 on disk.
 

@@ -1,6 +1,6 @@
 // Derives the sidebar structure from the flat file map.
 import YAML from 'yaml';
-import { FLOW_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename } from './format.js';
+import { FLOW_EXT, FOLDER_FILE, REQ_EXT, isEnvFile, basename, listEnvs } from './format.js';
 
 const metaCache = new Map(); // text -> { name, method }
 
@@ -52,7 +52,6 @@ export function buildTree(files) {
       workflows.push({ path, ...meta(text, basename(path).slice(0, -FLOW_EXT.length)) });
       continue;
     } else if (isEnvFile(path)) {
-      envs.push(path);
       continue;
     } else if (path === 'postbote.yaml') {
       continue;
@@ -66,7 +65,7 @@ export function buildTree(files) {
   };
   sort(root);
   workflows.sort(byOrder);
-  envs.sort();
+  envs.push(...listEnvs(files));
   other.sort();
   return { root, workflows, envs, other };
 }

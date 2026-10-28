@@ -37,7 +37,7 @@
     const all = [...scope.values()];
     const starts = all.filter((v) => v.name.toLowerCase().startsWith(q));
     const contains = all.filter((v) => !v.name.toLowerCase().startsWith(q) && v.name.toLowerCase().includes(q));
-    const order = { env: 0, folder: 1, collection: 2, runtime: 3, builtin: 4 };
+    const order = { env: 0, envpub: 1, folder: 2, collection: 3, runtime: 4, builtin: 5 };
     const sort = (a, b) => order[a.source] - order[b.source] || a.name.localeCompare(b.name);
     return [...starts.sort(sort), ...contains.sort(sort)].slice(0, 50);
   }
@@ -248,6 +248,10 @@
     color: var(--v-fold);
     background: var(--v-fold-bg);
   }
+  .v-envpub {
+    color: var(--v-envpub);
+    background: var(--v-envpub-bg);
+  }
   .v-env {
     color: var(--v-env);
     background: var(--v-env-bg);
@@ -323,6 +327,9 @@
   }
   .d-env {
     background: var(--v-env);
+  }
+  .d-envpub {
+    background: var(--v-envpub);
   }
   .d-folder {
     background: var(--v-fold);

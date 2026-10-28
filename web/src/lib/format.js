@@ -317,9 +317,27 @@ export function updateEnv(text, rows) {
   return out.join('\n') + '\n';
 }
 
+// An environment is a name with up to two files: shared values in
+// <name>.env.pub (committed) and private overrides in <name>.env (gitignored).
 export const envName = (path) => path.split('/').pop().replace(/\.env(\.pub)?$/, '');
 export const isPublicEnv = (path) => path.endsWith('.env.pub');
-export const isEnvFile = (path) => path.startsWith('environments/') && /\.env(\.pub)?$/.test(path);
+export const isEnvFile = (path) => /^environments\/[^/]+\.env(\.pub)?$/.test(path);
+export const envPublicPath = (name) => `environments/${name}.env.pub`;
+export const envPrivatePath = (name) => `environments/${name}.env`;
+
+/** [{ name, pub, priv }] sorted by name */
+export function listEnvs(files) {
+  const m = new Map();
+  for (const p of Object.keys(files)) {
+    if (!isEnvFile(p)) continue;
+    const name = envName(p);
+    const e = m.get(name) || { name, pub: false, priv: false };
+    if (isPublicEnv(p)) e.pub = true;
+    else e.priv = true;
+    m.set(name, e);
+  }
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 // ------------------------------------------------------------ git
 
@@ -379,8 +397,8 @@ export function scaffold(name) {
       scripts: { pre: '', post: '' },
     }),
     '.gitignore': updateGitignore('', false),
-    'environments/local.env': '# private environment, not committed (see .gitignore)\ntoken=\n',
-    'environments/shared.env.pub': '# public environment, committed to git: no secrets here\nbaseUrl=https://httpbin.org\n',
+    'environments/dev.env.pub': '# shared values of "dev", committed to git: no secrets here\nbaseUrl=https://httpbin.org\ntoken=\n',
+    'environments/dev.env': '# private overrides of "dev", not committed (see .gitignore)\ntoken=\n',
     'requests/examples/_folder.yaml': serializeFolder({ name: 'Examples', variables: [], headers: [], auth: { type: 'inherit' }, scripts: {} }),
     'requests/examples/get-json.req.yaml': serializeRequest({
       name: 'Get JSON',
@@ -395,6 +413,6 @@ export function scaffold(name) {
         post: "test('status is 200', () => expect(res.status).toBe(200));\ntest('has a slideshow', () => expect(res.json()).toHaveProperty('slideshow'));\n",
       },
     }),
-    'README.md': `# ${name}\n\nAPI collection for [postbote](https://github.com/). Everything is plain text:\n\n- \`postbote.yaml\` collection settings, variables, scripts\n- \`requests/**/*.req.yaml\` requests, \`_folder.yaml\` folder settings\n- \`workflows/*.flow.yaml\` workflows\n- \`environments/*.env\` private environments (gitignored), \`*.env.pub\` public ones\n`,
+    'README.md': `# ${name}\n\nAPI collection for [postbote](https://github.com/). Everything is plain text:\n\n- \`postbote.yaml\` collection settings, variables, scripts\n- \`requests/**/*.req.yaml\` requests, \`_folder.yaml\` folder settings\n- \`workflows/*.flow.yaml\` workflows\n- \`environments/<name>.env.pub\` shared environment values (committed), \`<name>.env\` private overrides (gitignored)\n`,
   };
 }

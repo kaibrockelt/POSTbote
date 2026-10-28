@@ -8,12 +8,12 @@
   import { variableScope } from '../lib/vars.js';
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseFolder, serializeFolder, FOLDER_FILE } from '../lib/format.js';
-  import { app } from '../lib/state.svelte.js';
+  import { app, currentFiles } from '../lib/state.svelte.js';
 
   let { path } = $props(); // folder directory
   const file = `${path}/${FOLDER_FILE}`;
   const d = fileDoc(file, parseFolder, serializeFolder);
-  const scope = $derived(variableScope(app.files, app.env, file));
+  const scope = $derived(variableScope(currentFiles(), app.env, file));
   setContext('vars', () => scope);
   let tab = $state('headers');
 </script>

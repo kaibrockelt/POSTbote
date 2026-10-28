@@ -211,6 +211,25 @@ pub fn load_folder_chain(fs: &dyn Fs, req_path: &str) -> Result<Vec<Folder>> {
     Ok(out)
 }
 
+pub const ENV_DIR: &str = "environments";
+
+/// Shared, committed values of an environment.
+pub fn env_public_path(name: &str) -> String {
+    format!("{ENV_DIR}/{name}.env.pub")
+}
+
+/// Private values (gitignored) that override the shared ones.
+pub fn env_private_path(name: &str) -> String {
+    format!("{ENV_DIR}/{name}.env")
+}
+
+pub fn check_env_name(name: &str) -> Result<()> {
+    if name.is_empty() || name.len() > 100 || !name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) || name.starts_with('.') {
+        bail!("invalid environment name {name:?}");
+    }
+    Ok(())
+}
+
 pub fn enabled(kvs: &[Kv]) -> impl Iterator<Item = &Kv> {
     kvs.iter().filter(|kv| !kv.disabled && !kv.key.is_empty())
 }

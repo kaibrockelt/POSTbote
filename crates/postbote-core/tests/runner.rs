@@ -62,6 +62,7 @@ fn collection(base: &str, extra: &[(&str, &str)]) -> Box<dyn Fs> {
         "postbote.yaml".to_string(),
         format!("version: 1\nname: Test\nvariables:\n  baseUrl: {base}\nheaders:\n  - key: X-Col\n    value: col\n"),
     );
+    files.insert("environments/dev.env.pub".to_string(), "token=\nregion=eu\n".to_string());
     files.insert("environments/dev.env".to_string(), "# dev\ntoken=abc\n".to_string());
     for (k, v) in extra {
         files.insert(k.to_string(), v.to_string());
@@ -70,7 +71,7 @@ fn collection(base: &str, extra: &[(&str, &str)]) -> Box<dyn Fs> {
 }
 
 fn opts() -> RunOptions {
-    RunOptions { env_path: Some("environments/dev.env".into()), ..Default::default() }
+    RunOptions { env: Some("dev".into()), ..Default::default() }
 }
 
 #[test]
@@ -110,6 +111,7 @@ scripts:
       expect(j.headers['x-pre']).toBe('2d7116');
     });
     test('query', () => expect(j.path).toBe('/users?q=a+b'));
+    test('shared env value', () => expect(env.get('region')).toBe('eu'));
     test('fails on purpose', () => expect(1).not.toBe(1));
     env.set('token', 'new "token"');
     env.set('fresh', 42);
@@ -126,13 +128,21 @@ scripts:
     let names: Vec<_> = r.tests.iter().map(|t| (t.name.as_str(), t.passed)).collect();
     assert_eq!(
         names,
-        vec![("status ok", true), ("body interpolated", true), ("headers merged", true), ("query", true), ("fails on purpose", false)],
+        vec![
+            ("status ok", true),
+            ("body interpolated", true),
+            ("headers merged", true),
+            ("query", true),
+            ("shared env value", true),
+            ("fails on purpose", false)
+        ],
         "{:#?}",
         r.tests
     );
     assert_eq!(r.logs[0].message, "pre {\n  \"a\": 1\n}");
     let env = out.changed_files["environments/dev.env"].clone().unwrap();
     assert_eq!(env, "# dev\ntoken=\"new \\\"token\\\"\"\nfresh=42\n");
+    assert!(!out.changed_files.contains_key("environments/dev.env.pub"), "env.set must not touch the shared file");
     assert!(out.changed_files["out/result.json"].as_ref().unwrap().contains("\"method\": \"POST\""));
 }
 

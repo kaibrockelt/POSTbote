@@ -1,9 +1,9 @@
 <script>
   import TreeFolder from './TreeFolder.svelte';
-  import { app, select, isDirty, openWorkspace, reload, exportWorkspace, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
+  import { app, select, isDirty, setEnv, openMenu, openWorkspace, reload, removeWorkspace, confirmAction, fail, toast } from '../lib/state.svelte.js';
   import { buildTree, filterTree, folderList } from '../lib/tree.js';
   import { dnd, dragOver, dragLeave, drop } from '../lib/dnd.svelte.js';
-  import { envName, isPublicEnv } from '../lib/format.js';
+  import { envPublicPath, envPrivatePath } from '../lib/format.js';
   import * as act from '../lib/actions.js';
 
   let { onNewWorkspace } = $props();
@@ -50,7 +50,7 @@
     {#if app.ws.storage !== 'browser'}
       <button class="link" onclick={() => reload().then(() => toast('Reloaded')).catch(fail)} title="Re-read files, e.g. after git pull">⟳ Reload</button>
     {/if}
-    {#if app.ws.storage !== 'disk'}<button class="link" onclick={() => exportWorkspace().catch(fail)}>⇩ Export</button>{/if}
+    <button class="link" onclick={() => (app.exporting = true)}>⇩ Export</button>
     {#if !app.ws.managed}<button class="link danger" onclick={removeWs}>✕ Remove</button>{/if}
   </div>
 
@@ -103,17 +103,23 @@
         <span>Environments</span>
         <span class="actions"><button class="icon" title="New environment" onclick={act.newEnv}>＋</button></span>
       </div>
-      {#each tree.envs as e (e)}
-        <div class="item" class:selected={sel('env', e)}>
-          <button class="label" onclick={() => select({ kind: 'env', path: e })}>
-            <span class="dot" class:active={app.env === e}></span>
-            {envName(e)}
-            {#if isDirty(e)}<span class="unsaved" title="unsaved changes">●</span>{/if}
-            <span class="tag" title={isPublicEnv(e) ? 'committed to git' : 'gitignored'}>{isPublicEnv(e) ? 'pub' : 'private'}</span>
+      {#each tree.envs as e (e.name)}
+        <div class="item" class:selected={sel('env', e.name)} role="treeitem" aria-selected={sel('env', e.name)} tabindex="-1"
+          oncontextmenu={(ev) => openMenu(ev, [
+            { label: app.env === e.name ? 'Deactivate' : 'Activate', action: () => setEnv(app.env === e.name ? '' : e.name) },
+            { label: 'Rename…', action: () => act.renameEnv(e.name) },
+            { separator: true },
+            { label: 'Delete', danger: true, action: () => act.deleteEnv(e.name) },
+          ])}>
+          <button class="label" onclick={() => select({ kind: 'env', path: e.name })}>
+            <span class="dot" class:active={app.env === e.name}></span>
+            {e.name}
+            {#if isDirty(envPublicPath(e.name)) || isDirty(envPrivatePath(e.name))}<span class="unsaved" title="unsaved changes">●</span>{/if}
+            <span class="tag" title="shared values (committed) / private overrides (gitignored)">{[e.pub && 'shared', e.priv && 'private'].filter(Boolean).join(' + ')}</span>
           </button>
           <span class="actions">
-            <button class="icon" title="Rename" onclick={() => act.renameEnv(e)}>✎</button>
-            <button class="icon" title="Delete" onclick={() => act.deleteFile(e)}>🗑</button>
+            <button class="icon" title="Rename" onclick={() => act.renameEnv(e.name)}>✎</button>
+            <button class="icon" title="Delete" onclick={() => act.deleteEnv(e.name)}>🗑</button>
           </span>
         </div>
       {/each}

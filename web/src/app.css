@@ -27,6 +27,8 @@
   --j-bool: #7a4fd6;
   --v-col: #13803f;
   --v-col-bg: #dff3e6;
+  --v-envpub: #8a6a00;
+  --v-envpub-bg: #fbf1c7;
   --v-env: #b45309;
   --v-env-bg: #fdebd3;
   --v-miss: #c9372c;
@@ -68,6 +70,8 @@
     --j-bool: #c3a6ff;
     --v-col: #5fd394;
     --v-col-bg: #173b27;
+    --v-envpub: #e8cf6a;
+    --v-envpub-bg: #3b3415;
     --v-env: #f0a552;
     --v-env-bg: #43301a;
     --v-miss: #ff7b72;

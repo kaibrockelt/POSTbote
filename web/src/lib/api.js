@@ -45,7 +45,8 @@ export const api = {
   deleteFile: (id, path) => call('DELETE', `/api/workspaces/${id}/files/${enc(path)}`),
   renameFile: (id, from, to) => call('POST', `/api/workspaces/${id}/rename`, { from, to }),
   run: (body, signal) => call('POST', '/api/run', body, { signal }),
-  exportZip: (name, files) => call('POST', '/api/export', { name, files }, { blob: true }),
+  exportZip: (name, files, savePath) =>
+    savePath ? call('POST', '/api/export', { name, files, savePath }) : call('POST', '/api/export', { name, files }, { blob: true }),
   importZip: (blob) => call('POST', '/api/import', blob),
   getSession: (id) => call('GET', `/api/session/${id}`),
   putSession: (id, session) => call('PUT', `/api/session/${id}`, session),

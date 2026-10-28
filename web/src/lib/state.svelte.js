@@ -22,7 +22,10 @@ import {
   dirname,
   basename,
   envName,
-  isPublicEnv,
+  isEnvFile,
+  envPublicPath,
+  envPrivatePath,
+  listEnvs,
 } from './format.js';
 
 export const app = $state({
@@ -40,6 +43,7 @@ export const app = $state({
   toasts: [],
   dialog: null,
   picker: null, // folder picker fallback when no native dialog exists
+  exporting: false, // export dialog open
   menu: null, // context menu: { x, y, items: [{ label, action?, items?, danger?, disabled? }] }
   saving: 0,
 });
@@ -161,7 +165,9 @@ export async function removeFile(path) {
   delete app.files[path];
   delete app.results[path];
   delete app.drafts[path];
-  for (const t of app.tabs.filter((t) => tabFile(t) === path)) dropTab(t);
+  for (const t of app.tabs.filter((t) => tabFiles(t).includes(path))) {
+    if (!tabFiles(t).some((f) => f in app.files || f in app.drafts)) dropTab(t);
+  }
   persistUi();
   if (app.ws.storage === 'browser') return persistBrowser();
   clearTimeout(pending.get(path));
@@ -188,7 +194,6 @@ export async function renameFile(from, to) {
   if (app.selected?.path === from) app.selected = { ...app.selected, path: to };
   else if (app.selected?.kind === 'folder' && from === `${app.selected.path}/${FOLDER_FILE}`) app.selected = { ...app.selected, path: dirname(to) };
   persistUi();
-  if (app.env === from) setEnv(to);
   if (app.ws.storage === 'browser') return persistBrowser();
   await flush();
   await track(api.renameFile(app.ws.id, from, to));
@@ -268,6 +273,7 @@ export const sameTab = (a, b) => tabKey(a) === tabKey(b);
 export function tabFile(t) {
   if (t.kind === 'folder') return `${t.path}/${FOLDER_FILE}`;
   if (t.kind === 'collection') return MANIFEST;
+  if (t.kind === 'env') return envPublicPath(t.path); // env tabs are keyed by name
   return t.path;
 }
 
@@ -284,6 +290,7 @@ export function setDraft(path, text) {
 
 /** Files saved together with a tab (a workflow also saves its data file). */
 export function tabFiles(t) {
+  if (t.kind === 'env') return [envPublicPath(t.path), envPrivatePath(t.path)];
   const files = [tabFile(t)];
   if (t.kind === 'workflow') {
     const data = parseWorkflow(contentOf(t.path)).doc?.data;
@@ -349,28 +356,38 @@ async function restoreUi(id, files) {
   const s = await readSession(id);
   const drafts = s.drafts && typeof s.drafts === 'object' ? s.drafts : {};
   const missing = [];
-  const exists = (t) => t && (t.kind === 'collection' || (t.kind === 'folder' ? Object.keys(files).some((p) => p.startsWith(t.path + '/')) || tabFile(t) in drafts : t.path in files));
+  const envNames = new Set(listEnvs(files).map((e) => e.name));
+  const exists = (t) => {
+    if (t.kind === 'collection') return true;
+    if (t.kind === 'folder') return Object.keys(files).some((p) => p.startsWith(t.path + '/'));
+    if (t.kind === 'env') return envNames.has(t.path);
+    return t.path in files;
+  };
   const tabs = [];
-  for (const t of Array.isArray(s.tabs) ? s.tabs : []) {
+  for (let t of Array.isArray(s.tabs) ? s.tabs : []) {
     if (!t?.kind || !t?.path) continue;
+    if (t.kind === 'env' && isEnvFile(t.path)) t = { kind: 'env', path: envName(t.path) }; // older sessions stored file paths
+    if (tabs.some((x) => sameTab(x, t))) continue;
     if (exists(t)) tabs.push(t);
-    else if (tabFile(t) in drafts) {
+    else if (tabFiles(t).some((f) => f in drafts)) {
       tabs.push(t); // deleted meanwhile, but the unsaved version is kept
       missing.push(`${t.path} (deleted – your unsaved version is still open)`);
     } else missing.push(t.path);
   }
   // drafts of files that are gone and have no tab cannot be shown anymore
-  for (const p of Object.keys(drafts)) if (!(p in files) && !tabs.some((t) => tabFile(t) === p)) delete drafts[p];
+  for (const p of Object.keys(drafts)) if (!(p in files) && !tabs.some((t) => tabFiles(t).includes(p))) delete drafts[p];
   app.drafts = drafts;
   app.tabs = tabs;
-  app.selected = tabs.find((t) => sameTab(t, s.selected)) ?? tabs[0] ?? null;
+  const sel = s.selected?.kind === 'env' && isEnvFile(s.selected.path) ? { kind: 'env', path: envName(s.selected.path) } : s.selected;
+  app.selected = tabs.find((t) => sameTab(t, sel)) ?? tabs[0] ?? null;
   app.env = '';
-  if (s.env) {
-    if (s.env in files) app.env = s.env;
+  const env = s.env && isEnvFile(s.env) ? envName(s.env) : s.env;
+  if (env) {
+    if (envNames.has(env)) app.env = env;
     else {
-      const i = missing.indexOf(s.env); // also open as a tab: report once
+      const i = missing.indexOf(env); // also open as a tab: report once
       if (i >= 0) missing.splice(i, 1);
-      missing.push(`${s.env} (active environment – switched to “no environment”)`);
+      missing.push(`${env} (active environment – switched to “no environment”)`);
     }
   }
   if (missing.length) {
@@ -443,7 +460,7 @@ function syncGitignore(before, after) {
 /** Saves the tab's content under a new name; the original file stays as it was. */
 export async function saveTabAs(t = app.selected) {
   if (!t || !canSaveAs(t)) return false;
-  const text = contentOf(t.path);
+  const text = t.kind === 'env' ? '' : contentOf(t.path);
   let target;
   if (t.kind === 'request' || t.kind === 'workflow') {
     const isReq = t.kind === 'request';
@@ -455,10 +472,14 @@ export async function saveTabAs(t = app.selected) {
     target = uniquePath(app.files, dirname(t.path), slug(name), isReq ? REQ_EXT : FLOW_EXT);
     write(target, (isReq ? serializeRequest : serializeWorkflow)(doc));
   } else if (t.kind === 'env') {
-    const name = await ask('Save environment as', `${envName(t.path)}-copy`);
+    const name = await ask('Save environment as', `${t.path}-copy`);
     if (!name) return false;
-    target = uniquePath(app.files, 'environments', slug(name), isPublicEnv(t.path) ? '.env.pub' : '.env');
-    write(target, text);
+    target = slug(name);
+    if (listEnvs(app.files).some((e) => e.name === target)) throw new Error(`environment ${target} already exists`);
+    for (const [from, to] of [[envPublicPath(t.path), envPublicPath(target)], [envPrivatePath(t.path), envPrivatePath(target)]]) {
+      if (from in app.files || from in app.drafts) write(to, contentOf(from));
+      delete app.drafts[from];
+    }
   } else {
     const p = await ask('Save file as', t.path);
     if (!p || p === t.path) return false;
@@ -484,16 +505,22 @@ export function discardTab(t = app.selected) {
 export function tabTitle(t) {
   const text = contentOf(tabFile(t));
   if (t.kind === 'collection') return 'Settings';
-  if (t.kind === 'env') return envName(t.path);
+  if (t.kind === 'env') return t.path;
   if (t.kind === 'file') return basename(t.path);
   const name = parseYaml(text).doc?.name;
   if (name) return String(name);
   return basename(t.path).replace(/\.(req|flow)\.yaml$/, '');
 }
 
-export function setEnv(path) {
-  app.env = path;
+/** Activates an environment by name ('' = none). */
+export function setEnv(name) {
+  app.env = name;
   persistUi();
+}
+
+/** Saved files with unsaved drafts applied: what editors show and runs use. */
+export function currentFiles() {
+  return { ...app.files, ...app.drafts };
 }
 
 /** storage: 'browser' | 'server' | 'disk'. Disk without path = new folder in the collections folder. */
@@ -536,14 +563,27 @@ export async function moveWorkspace(target) {
   await loadWorkspaces();
 }
 
-export async function exportWorkspace() {
+/**
+ * Exports the given files as zip. The desktop app asks for a location with a
+ * native save dialog; browsers download the file. Returns the saved path (desktop).
+ */
+export async function exportWorkspace(files) {
   await flush();
-  const blob = await api.exportZip(app.ws.name, $state.snapshot(app.files));
+  const fileName = (app.ws.name || 'collection').replace(/[^\w.-]+/g, '-') + '.zip';
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (invoke && app.info?.mode === 'local') {
+    const savePath = await invoke('plugin:dialog|save', { options: { defaultPath: fileName, filters: [{ name: 'Zip archive', extensions: ['zip'] }] } });
+    if (!savePath) return null;
+    await api.exportZip(app.ws.name, files, savePath);
+    return savePath;
+  }
+  const blob = await api.exportZip(app.ws.name, files);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = (app.ws.name || 'collection').replace(/[^\w.-]+/g, '-') + '.zip';
+  a.download = fileName;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return null;
 }
 
 // ------------------------------------------------------------ running

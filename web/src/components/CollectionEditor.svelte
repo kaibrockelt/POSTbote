@@ -8,10 +8,10 @@
   import { variableScope } from '../lib/vars.js';
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseCollection, serializeCollection, updateGitignore, MANIFEST } from '../lib/format.js';
-  import { app, write, moveWorkspace, exportWorkspace, fail, toast } from '../lib/state.svelte.js';
+  import { app, write, moveWorkspace, fail, toast, currentFiles } from '../lib/state.svelte.js';
 
   const d = fileDoc(MANIFEST, parseCollection, serializeCollection);
-  const scope = $derived(variableScope(app.files, app.env, ''));
+  const scope = $derived(variableScope(currentFiles(), app.env, ''));
   setContext('vars', () => scope);
   let tab = $state('general');
 
@@ -91,13 +91,13 @@
         {:else if app.ws.storage === 'browser'}
           <p>Stored in this browser only (IndexedDB). The server does not keep a copy; it only executes runs in memory.</p>
           <div class="row gap">
-            <button onclick={exportWorkspace}>Export as zip</button>
+            <button onclick={() => (app.exporting = true)}>Export as zip</button>
             {#if app.info.serverStorage}<button onclick={() => move('server')}>Store on server instead…</button>{/if}
           </div>
         {:else}
           <p>Stored on this server in your private space (opt-in).</p>
           <div class="row gap">
-            <button onclick={exportWorkspace}>Export as zip</button>
+            <button onclick={() => (app.exporting = true)}>Export as zip</button>
             <button onclick={() => move('browser')}>Move to this browser</button>
           </div>
         {/if}

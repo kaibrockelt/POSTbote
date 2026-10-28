@@ -58,7 +58,7 @@ enum Cmd {
         dir: PathBuf,
         /// request (*.req.yaml) or workflow (*.flow.yaml), relative to the collection
         path: String,
-        /// environment name (environments/<name>.env[.pub]) or path
+        /// environment name: environments/<name>.env.pub overlaid by environments/<name>.env
         #[arg(long, short)]
         env: Option<String>,
         /// print the full result as JSON
@@ -161,16 +161,22 @@ async fn shutdown_signal() {
 
 fn run_cli(dir: PathBuf, path: String, env: Option<String>) -> Result<RunOutput> {
     let fs = DiskFs::open(&dir)?;
-    let env_path = match env {
+    let env = match env {
         None => None,
-        Some(e) if e.ends_with(".env") || e.ends_with(".env.pub") => Some(e),
-        Some(name) => {
-            let candidates = [format!("environments/{name}.env"), format!("environments/{name}.env.pub")];
-            Some(candidates.iter().find(|c| fs.read(c).is_ok()).cloned().with_context(|| format!("environment {name:?} not found"))?)
+        Some(e) => {
+            // accept a name or a file path (environments/staging.env[.pub])
+            let name = e.rsplit('/').next().unwrap_or(&e).trim_end_matches(".pub").trim_end_matches(".env").to_string();
+            let exists = [postbote_core::model::env_public_path(&name), postbote_core::model::env_private_path(&name)]
+                .iter()
+                .any(|p| fs.read(p).is_ok());
+            if !exists {
+                bail!("environment {name:?} not found");
+            }
+            Some(name)
         }
     };
     let target = if path.ends_with(postbote_core::model::WORKFLOW_EXT) { Target::Workflow(path) } else { Target::Request(path) };
-    Ok(runner::run(Box::new(fs), target, RunOptions { env_path, ..Default::default() }))
+    Ok(runner::run(Box::new(fs), target, RunOptions { env, ..Default::default() }))
 }
 
 fn mark(ok: bool) -> &'static str {

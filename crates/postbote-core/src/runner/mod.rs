@@ -170,8 +170,9 @@ pub enum Target {
 
 #[derive(Debug, Clone)]
 pub struct RunOptions {
-    /// collection-relative path of the active environment file
-    pub env_path: Option<String>,
+    /// name of the active environment: `environments/<name>.env.pub` (shared)
+    /// overlaid by `environments/<name>.env` (private)
+    pub env: Option<String>,
     /// block requests to private/loopback networks (team server)
     pub deny_private: bool,
     pub max_duration: Duration,
@@ -183,7 +184,7 @@ pub struct RunOptions {
 impl Default for RunOptions {
     fn default() -> Self {
         Self {
-            env_path: None,
+            env: None,
             deny_private: false,
             max_duration: Duration::from_secs(3600),
             max_body: 20 << 20,
@@ -355,16 +356,33 @@ impl Engine {
             cancel: opts.cancel.clone(),
         });
 
-        let (mut env, mut env_order, mut env_name) = (BTreeMap::new(), Vec::new(), None);
-        if let Some(p) = &opts.env_path {
-            match fs.read(p) {
-                Ok(text) => (env, env_order) = dotenv::parse(&text),
-                Err(e) if is_not_found(&e) => {}
-                Err(e) => return Err(e),
+        // shared values first, private values on top; env.set() writes to the private file
+        let (mut env, mut env_order, mut env_path) = (BTreeMap::new(), Vec::new(), None);
+        if let Some(name) = &opts.env {
+            model::check_env_name(name)?;
+            let read = |p: &str| match fs.read(p) {
+                Ok(text) => Ok(Some(text)),
+                Err(e) if is_not_found(&e) => Ok(None),
+                Err(e) => Err(e),
+            };
+            if let Some(text) = read(&model::env_public_path(name))? {
+                env.extend(dotenv::parse(&text).0);
             }
-            let file = p.rsplit('/').next().unwrap_or(p);
-            env_name = Some(file.trim_end_matches(".pub").trim_end_matches(".env").to_string());
+            let private = model::env_private_path(name);
+            if let Some(text) = read(&private)? {
+                let (vals, order) = dotenv::parse(&text);
+                for (k, v) in vals {
+                    // an empty private value means "not set" and keeps the shared one
+                    if v.is_empty() && env.get(&k).is_some_and(|s| !s.is_empty()) {
+                        continue;
+                    }
+                    env.insert(k, v);
+                }
+                env_order = order;
+            }
+            env_path = Some(private);
         }
+        let env_name = opts.env.clone();
 
         let http = Http::new(&col.settings, opts.deny_private, opts.max_body)?;
         let script_timeout = col.settings.script_timeout_ms();
@@ -372,7 +390,7 @@ impl Engine {
             fs: Tracking::new(fs),
             col,
             env_name,
-            env_path: opts.env_path.clone(),
+            env_path,
             env,
             env_order,
             env_changes: BTreeMap::new(),

@@ -285,11 +285,9 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
         "workflow" => Target::Workflow(r.path),
         k => return Err(err(StatusCode::BAD_REQUEST, format!("unknown run kind {k:?}"))),
     };
-    let env_path = r.env.filter(|e| !e.is_empty());
-    if let Some(e) = &env_path {
-        if !(e.ends_with(".env") || e.ends_with(".env.pub")) {
-            return Err(err(StatusCode::BAD_REQUEST, "environment must be a *.env or *.env.pub file"));
-        }
+    let env = r.env.filter(|e| !e.is_empty());
+    if let Some(e) = &env {
+        postbote_core::model::check_env_name(e)?;
     }
     let _permit = s.runs.acquire().await.map_err(|e| err(StatusCode::SERVICE_UNAVAILABLE, e.to_string()))?;
     let fs: Box<dyn Fs> = match (&r.workspace, r.files) {
@@ -305,7 +303,7 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
     let cancel = Arc::new(AtomicBool::new(false));
     let _guard = CancelOnDrop(cancel.clone());
     let opts = RunOptions {
-        env_path,
+        env,
         deny_private: s.cfg.deny_private_networks,
         max_duration: Duration::from_secs(s.cfg.max_run_seconds),
         memory_limit: s.cfg.memory_limit_mb << 20,
@@ -321,9 +319,12 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
 // ---------------------------------------------------------------- import / export
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Export {
     name: String,
     files: BTreeMap<String, String>,
+    /// local app: write the zip to this file (chosen in a native save dialog)
+    save_path: Option<String>,
 }
 
 pub fn slug(s: &str) -> String {
@@ -339,9 +340,13 @@ pub fn slug(s: &str) -> String {
     if out.is_empty() { "collection".into() } else { out }
 }
 
-async fn export_zip(_u: User, Json(e): Json<Export>) -> ApiResult<Response> {
+async fn export_zip(State(s): State<Arc<AppState>>, _u: User, Json(e): Json<Export>) -> ApiResult<Response> {
     let name = slug(&e.name);
     let n2 = name.clone();
+    let save_path = e.save_path.clone();
+    if save_path.is_some() && !s.is_local() {
+        return Err(err(StatusCode::FORBIDDEN, "only available in the local app"));
+    }
     let bytes = blocking(move || {
         let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
         let opts = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
@@ -353,6 +358,15 @@ async fn export_zip(_u: User, Json(e): Json<Export>) -> ApiResult<Response> {
         Ok(w.finish()?.into_inner())
     })
     .await?;
+    if let Some(p) = save_path {
+        let path = std::path::PathBuf::from(&p);
+        if !path.is_absolute() {
+            return Err(err(StatusCode::BAD_REQUEST, "save path must be absolute"));
+        }
+        let len = bytes.len();
+        blocking(move || Ok(std::fs::write(path, bytes)?)).await?;
+        return Ok(Json(json!({ "saved": p, "size": len })).into_response());
+    }
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_string()),

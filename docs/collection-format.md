@@ -90,12 +90,21 @@ steps:
         if (res.status === 409) wf.goto('verify');
 ```
 
-## Environments: `environments/<name>.env` and `<name>.env.pub`
+## Environments: `environments/<name>.env.pub` + `environments/<name>.env`
+
+An environment is identified by its name and consists of up to two dotenv files:
+
+| File | Contents | Git |
+| --- | --- | --- |
+| `<name>.env.pub` | shared values; declare every variable here, leave secrets empty | committed |
+| `<name>.env` | private overrides (secrets, personal values) | ignored by the managed `.gitignore` block |
+
+Private values override shared ones with the same name, except empty private values (`token=`
+in the private file means “not set yet” and keeps a shared value). `env.set()` in scripts always
+writes to the private file, so values obtained at runtime (tokens) never end up in git.
 
 dotenv syntax: `KEY=value`, `# comments`, optional `export`, `"double quotes"` with `\n` escapes,
-`'single quotes'` literal. `*.env` is private (excluded by the managed `.gitignore` block),
-`*.env.pub` is public and meant to be committed. `env.set()` in scripts updates the active
-environment file in place and keeps comments and order.
+`'single quotes'` literal. Comments and order are kept when POSTBote updates a file.
 
 ## Variables
 
@@ -103,9 +112,10 @@ environment file in place and keeps comments and order.
 
 1. runtime `vars` (set by scripts, live for one run/workflow)
 2. the current workflow data row
-3. the active environment
-4. folder variables (innermost first)
-5. collection variables
+3. the active environment: private values (`<name>.env`)
+4. the active environment: shared values (`<name>.env.pub`)
+5. folder variables (innermost first)
+6. collection variables
 
 Dynamic values: `{{$uuid}}`, `{{$timestamp}}`, `{{$timestampMs}}`, `{{$isoTimestamp}}`, `{{$randomInt}}`.
 Unknown names are left as-is; an unresolved variable in the URL is reported as an error.

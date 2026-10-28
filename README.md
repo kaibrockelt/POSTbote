@@ -5,7 +5,8 @@ An offline-first API client in the spirit of Postman and Bruno, built for digita
 text files that live in your folder (or your browser) and can be versioned with git.
 
 - Collections with nested folders, inherited headers/variables/auth/scripts
-- Environments as dotenv files: private `*.env` (gitignored by default) and public `*.env.pub`
+- Environments as dotenv files: shared values in `<name>.env.pub` (committed) overlaid by private
+  secrets in `<name>.env` (gitignored)
 - Workflows: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
 - JavaScript scripting (QuickJS) before/after requests and before/after workflows: read, iterate, write files
 - Desktop app (Tauri, system webview — no Electron), local browser mode, multi-user Docker server, CLI for CI
@@ -84,8 +85,8 @@ my-api/
 ├── postbote.yaml                         # name, settings, variables, headers, auth, scripts
 ├── .gitignore                        # managed block: *.env stays local
 ├── environments/
-│   ├── local.env                     # private (gitignored)
-│   └── staging.env.pub               # public (committed)
+│   ├── staging.env.pub               # shared values of "staging" (committed)
+│   └── staging.env                   # private overrides/secrets of "staging" (gitignored)
 ├── requests/
 │   └── users/
 │       ├── _folder.yaml              # folder headers / variables / auth / scripts
@@ -109,9 +110,10 @@ scripts:
     vars.set('userName', res.json().name);
 ```
 
-Whether private environments are committed is a collection setting (`settings.commitEnvironments`),
-which rewrites only POSTBote's block in `.gitignore`. A single environment can also be switched between
-private (`.env`) and public (`.env.pub`) in the UI.
+Shared and private files of the same name form one environment; private values win. Exports leave
+environments out unless chosen, and private values need an extra opt-in. Whether private files are
+committed after all is a collection setting (`settings.commitEnvironments`), which rewrites only
+POSTBote's block in `.gitignore`.
 
 ## Scripting
 

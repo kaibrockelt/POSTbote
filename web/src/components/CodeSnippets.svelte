@@ -1,5 +1,5 @@
 <script>
-  import { app, toast } from '../lib/state.svelte.js';
+  import { app, toast, currentFiles } from '../lib/state.svelte.js';
   import { effectiveRequest } from '../lib/effective.js';
   import { LANGUAGES, generate } from '../lib/snippets.js';
 
@@ -25,7 +25,7 @@
   let resolve = $state(remember('resolve', 'true') === 'true');
 
   const current = $derived(LANGUAGES.find((l) => l.id === lang) || LANGUAGES[0]);
-  const req = $derived(effectiveRequest(app.files, app.env, path, doc, { resolve }));
+  const req = $derived(effectiveRequest(currentFiles(), app.env, path, doc, { resolve }));
   const code = $derived(generate(current.id, libs[current.id], req));
 
   $effect(() => {

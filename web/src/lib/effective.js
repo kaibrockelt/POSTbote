@@ -16,8 +16,8 @@ function b64(s) {
 // keep {{placeholders}} readable inside encoded query strings
 const enc = (s) => encodeURIComponent(s).replace(/%7B%7B(.*?)%7D%7D/g, (_, n) => `{{${decodeURIComponent(n)}}}`);
 
-export function effectiveRequest(files, envPath, reqPath, doc, { resolve = true } = {}) {
-  const scope = variableScope(files, envPath, reqPath);
+export function effectiveRequest(files, env, reqPath, doc, { resolve = true } = {}) {
+  const scope = variableScope(files, env, reqPath);
   const I = (s) => (resolve ? interpolate(s, scope) : String(s ?? ''));
   const col = parseCollection(files[MANIFEST] || '').doc;
   const folders = ancestors(reqPath)

@@ -13,10 +13,11 @@
   import FolderPicker from './components/FolderPicker.svelte';
   import TabBar from './components/TabBar.svelte';
   import ContextMenu from './components/ContextMenu.svelte';
+  import ExportDialog from './components/ExportDialog.svelte';
   import { app, init, setEnv, reload, flush, flushSession, saveTab, fail } from './lib/state.svelte.js';
   import { api } from './lib/api.js';
   import { buildTree } from './lib/tree.js';
-  import { envName, isPublicEnv } from './lib/format.js';
+  import { listEnvs } from './lib/format.js';
 
   let showWsDialog = $state(false);
   let showFolderSettings = $state(false);
@@ -27,7 +28,7 @@
     .catch((e) => (startError = e.message))
     .finally(() => (ready = true));
 
-  const envs = $derived(buildTree(app.files).envs);
+  const envs = $derived(listEnvs(app.files));
   const sel = $derived(app.selected);
 
   // pick up external edits (git pull, editor) when the window regains focus
@@ -78,7 +79,7 @@
           <span class="muted">Environment</span>
           <select value={app.env} onchange={(e) => setEnv(e.currentTarget.value)}>
             <option value="">— none —</option>
-            {#each envs as e}<option value={e}>{envName(e)}{isPublicEnv(e) ? ' (public)' : ''}</option>{/each}
+            {#each envs as e (e.name)}<option value={e.name}>{e.name}</option>{/each}
           </select>
         </label>
       {/if}
@@ -143,6 +144,9 @@
 {/if}
 {#if showWsDialog}
   <WorkspaceDialog onclose={() => (showWsDialog = false)} />
+{/if}
+{#if app.exporting && app.ws}
+  <ExportDialog onclose={() => (app.exporting = false)} />
 {/if}
 {#if app.picker}
   <FolderPicker start={app.picker.start} onpick={(p) => app.picker.resolve(p)} oncancel={() => app.picker.resolve(null)} />

@@ -13,15 +13,15 @@
   import { effectiveRequest } from '../lib/effective.js';
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseRequest, serializeRequest, METHODS } from '../lib/format.js';
-  import { app, run, cancelRun } from '../lib/state.svelte.js';
+  import { app, run, cancelRun, currentFiles } from '../lib/state.svelte.js';
 
   let { path } = $props();
   const d = fileDoc(path, parseRequest, serializeRequest);
   let tab = $state('params');
   let showCode = $state(false);
-  const scope = $derived(variableScope(app.files, app.env, path));
+  const scope = $derived(variableScope(currentFiles(), app.env, path));
   setContext('vars', () => scope);
-  const resolvedUrl = $derived(d.doc ? effectiveRequest(app.files, app.env, path, $state.snapshot(d.doc)).url : '');
+  const resolvedUrl = $derived(d.doc ? effectiveRequest(currentFiles(), app.env, path, $state.snapshot(d.doc)).url : '');
 
   const running = $derived(!!app.running[path]);
   const result = $derived(app.results[path]?.request);

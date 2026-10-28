@@ -14,7 +14,9 @@ import {
   serializeFolder,
   parseFolder,
   parseYaml,
-  isPublicEnv,
+  envPublicPath,
+  envPrivatePath,
+  listEnvs,
 } from './format.js';
 import { app, ask, confirmAction, write, removeFile, renameFile, select, setEnv, fail, contentOf, setDraft } from './state.svelte.js';
 
@@ -158,7 +160,6 @@ export const deleteFile = guard(async (path, label) => {
   if (!(await confirmAction(`Delete “${label || basename(path)}”?`, path))) return;
   await removeFile(path);
   if (app.selected?.path === path) select(null);
-  if (app.env === path) setEnv('');
 });
 
 export const newWorkflow = guard(async () => {
@@ -181,19 +182,37 @@ export const renameWorkflow = guard(async (path) => {
 });
 
 export const newEnv = guard(async () => {
-  const name = await ask('New environment', '', { placeholder: 'e.g. staging', hint: 'Private (gitignored) by default. Make it public later to commit it.' });
+  const name = await ask('New environment', '', {
+    placeholder: 'e.g. staging',
+    hint: 'Shared values go to <name>.env.pub (committed), secrets to <name>.env (private).',
+  });
   if (!name) return;
-  const path = uniquePath(app.files, 'environments', slug(name), '.env');
-  write(path, `# ${name}\n`);
-  select({ kind: 'env', path });
-  if (!app.env) setEnv(path);
+  const env = slug(name);
+  if (listEnvs(app.files).some((e) => e.name === env)) throw new Error(`environment ${env} already exists`);
+  write(envPublicPath(env), `# shared values of "${env}", committed to git: no secrets here\n`);
+  select({ kind: 'env', path: env });
+  if (!app.env) setEnv(env);
 });
 
-export const renameEnv = guard(async (path) => {
-  const name = await ask('Rename environment', basename(path).replace(/\.env(\.pub)?$/, ''));
+export const renameEnv = guard(async (env) => {
+  const name = await ask('Rename environment', env);
   if (!name) return;
-  const to = `environments/${slug(name)}${isPublicEnv(path) ? '.env.pub' : '.env'}`;
-  if (to !== path) await renameFile(path, to);
+  const to = slug(name);
+  if (to === env) return;
+  if (listEnvs(app.files).some((e) => e.name === to)) throw new Error(`environment ${to} already exists`);
+  for (const [from, target] of [[envPublicPath(env), envPublicPath(to)], [envPrivatePath(env), envPrivatePath(to)]]) {
+    if (from in app.files) await renameFile(from, target);
+  }
+  for (const t of app.tabs) if (t.kind === 'env' && t.path === env) t.path = to;
+  if (app.selected?.kind === 'env' && app.selected.path === env) app.selected = { kind: 'env', path: to };
+  if (app.env === env) setEnv(to);
+});
+
+export const deleteEnv = guard(async (env) => {
+  const files = [envPublicPath(env), envPrivatePath(env)].filter((f) => f in app.files);
+  if (!(await confirmAction(`Delete environment “${env}”?`, files.join(', ')))) return;
+  for (const f of files) await removeFile(f);
+  if (app.env === env) setEnv('');
 });
 
 export const newFile = guard(async () => {
