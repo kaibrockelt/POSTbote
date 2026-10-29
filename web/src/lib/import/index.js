@@ -18,9 +18,10 @@ import { postman } from './postman.js';
 import { openapi } from './openapi.js';
 import { httpFile, rawHttp } from './http.js';
 import { har } from './har.js';
+import { bruno } from './bruno.js';
 
 export const requestImporters = [curl, rawHttp];
-export const collectionImporters = [postman, openapi, httpFile, har];
+export const collectionImporters = [postman, openapi, httpFile, har, bruno];
 
 /** Recognises the pasted text and converts it, or throws with a helpful message. */
 export function importRequest(text) {

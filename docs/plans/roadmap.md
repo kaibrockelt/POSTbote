@@ -5,7 +5,7 @@ Collected 2026-10-28, updated as items land. Large items get their own branch (`
 ## Done
 
 - Import: cURL and raw HTTP paste (New request), Postman v2.x with environments, OpenAPI 3.x / Swagger
-  2.0, `.http` files (JetBrains/VS Code), HAR ([import-export.md](import-export.md)).
+  2.0, `.http` files (JetBrains/VS Code), HAR, Bruno (folder, zip or JSON export) ([import-export.md](import-export.md)).
 - Node-based workflows: canvas editor, engine, CLI ([../workflows.md](../workflows.md));
   next steps in [node-workflows.md](node-workflows.md).
 - Cookie jar per environment (`.cookies/<env>.json`, gitignored, `cookies.*` in scripts).
@@ -20,7 +20,7 @@ Collected 2026-10-28, updated as items land. Large items get their own branch (`
 | Topic | Scope | Plan |
 | --- | --- | --- |
 | OAuth 2.0 / OIDC | auth type with Authorization Code + PKCE (login in browser/webview, local redirect), Client Credentials, Password, refresh tokens; tokens stored as private values, never in shared files. Imports map OAuth to a plain bearer token until then | – |
-| Import / export, phase 2+ | Bruno, Insomnia; `pm`/`bru` script compatibility layer (Postman scripts are imported as comments today); exports (Postman v2.1, `.http`); OpenAPI re-import / sync via the recorded `operationId` | [import-export.md](import-export.md) |
+| Import / export, phase 2+ | Bruno OpenCollection YAML (Bruno 3.1+), Insomnia; `pm`/`bru` script compatibility layer (Postman scripts are imported as comments today); exports (Postman v2.1, `.http`); OpenAPI re-import / sync via the recorded `operationId` | [import-export.md](import-export.md) |
 
 ## Medium
 

@@ -76,3 +76,12 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
   cookies left to the cookie jar.
 - **Where parsing runs:** in the web UI (`web/src/lib/import/`), so the one serializer in `format.js`
   writes the files and browser-stored collections work the same; a CLI import would need a Rust port.
+- **Bruno** (branch `feature/import-bruno`): the collection folder (folder picker or zip) or Bruno's
+  JSON export; `.bru` files are parsed into the export's shape, so one converter serves both.
+  bruno.json name, collection.bru / folder.bru (headers, auth, `vars:pre-request` → variables, docs),
+  `meta.seq` order, `params:path` → `{{name}}` collection variables, all body modes (SPARQL as text),
+  bearer/basic/apikey (oauth2 → `{{token}}`), `environments/*.bru` with `vars:secret` → empty private
+  values, `{{process.env.X}}` → `{{X}}` with values from `.env` in the private files. Assertions and
+  `vars:post-response` become real tests/scripts (a small `bruRes` shim gives Bruno's parsed
+  `res.body`); request `vars:pre-request` → `vars.set(…)`; `bru.*` scripts and tests stay comments.
+  gRPC/WebSocket requests are skipped with a warning. Not yet: OpenCollection YAML (Bruno 3.1+).

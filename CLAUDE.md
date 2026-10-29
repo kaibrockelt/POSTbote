@@ -41,6 +41,6 @@ Releases: push tag `vX.Y.Z` → `.github/workflows/release.yml` builds Tauri bun
 
 Full list of planned topics: `docs/plans/roadmap.md`.
 
-Import phase 1 is done (cURL/raw HTTP paste, Postman, OpenAPI, `.http`, HAR; `web/src/lib/import/`, one module per format, shared builder and secret handling). Remaining phases in `docs/plans/import-export.md`.
+Import phase 1 is done (cURL/raw HTTP paste, Postman, OpenAPI, `.http`, HAR, Bruno; `web/src/lib/import/`, one module per format, shared builder and secret handling). Remaining phases in `docs/plans/import-export.md`.
 
 Terminology: request chains over data rows are **runners** (`runners/**/*.runner.yaml`; internally still `workflow`: kind, `Target::Workflow`, `WorkflowEditor`, script object `wf`). **Workflows** are the node-based flows (`workflows/**/*.workflow.yaml`, internally `graph`: `runner/graph.rs`, `Target::Graph`, `GraphEditor`, tab kind `graph`), see `docs/workflows.md`; later steps in `docs/plans/node-workflows.md`.

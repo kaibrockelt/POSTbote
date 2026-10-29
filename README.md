@@ -12,7 +12,7 @@ text files that live in your folder (or your browser) and can be versioned with 
   write files, call other workflows ([docs](docs/workflows.md))
 - JavaScript scripting (QuickJS) before/after requests and before/after runners: read, iterate, write files
 - Import: paste cURL or a raw HTTP request into a new request; Postman collections (v2.x, with
-  environments), OpenAPI 3.x / Swagger 2.0, `.http` files (JetBrains/VS Code) and HAR as new collections,
+  environments), OpenAPI 3.x / Swagger 2.0, `.http` files (JetBrains/VS Code), HAR and Bruno collections as new collections,
   secrets moved into private environment values
 - Desktop app (Tauri, system webview — no Electron), local browser mode, multi-user Docker server, CLI for CI
 

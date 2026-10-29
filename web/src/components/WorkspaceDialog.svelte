@@ -29,22 +29,40 @@
     if (picked) folder = picked;
   }
 
+  // foreign formats are converted in the browser; several files may belong
+  // together (a collection and its environments, or a folder of files)
+  function convert(inputs) {
+    const res = importCollection(inputs);
+    imported = { result: res, format: res.format, name: res.name, warnings: res.warnings, secrets: countSecrets(res) };
+    secretsEnv = '';
+    name = res.name || name;
+  }
+
+  // a chosen folder (e.g. a Bruno collection): only the files importers read
+  const FOLDER_FILES = /(\.bru|(^|\/)bruno\.json|(^|\/)\.env)$/i;
+  async function onfolder(e) {
+    const chosen = [...e.currentTarget.files].filter((f) => FOLDER_FILES.test(f.webkitRelativePath) && !/(^|\/)(node_modules|\.git)\//.test(f.webkitRelativePath));
+    imported = null;
+    try {
+      if (!chosen.length) throw new Error('No Bruno collection in this folder (no .bru files or bruno.json).');
+      convert(await Promise.all(chosen.map(async (f) => ({ name: f.webkitRelativePath, text: await f.text() }))));
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   async function onfile(e) {
     const chosen = [...e.currentTarget.files];
     if (!chosen.length) return;
     imported = null;
     try {
       const file = chosen.find((f) => /\.zip$/i.test(f.name));
-      if (!file) {
-        // foreign formats are converted in the browser; several files may
-        // belong together (a collection and its environments)
-        const res = importCollection(await Promise.all(chosen.map(async (f) => ({ name: f.name, text: await f.text() }))));
-        imported = { result: res, format: res.format, name: res.name, warnings: res.warnings, secrets: countSecrets(res) };
-        secretsEnv = '';
-        name = res.name || name;
-        return;
-      }
+      if (!file) return convert(await Promise.all(chosen.map(async (f) => ({ name: f.name, text: await f.text() }))));
       const res = await api.importZip(file);
+      // a zipped Bruno collection
+      if (!res.files[MANIFEST] && Object.keys(res.files).some((p) => /(\.bru|(^|\/)bruno\.json)$/i.test(p))) {
+        return convert(Object.entries(res.files).filter(([p]) => FOLDER_FILES.test(p)).map(([p, text]) => ({ name: p, text })));
+      }
       const n = parseYaml(res.files[MANIFEST] || '').doc?.name || file.name.replace(/\.zip$/i, '');
       imported = { ...res, name: n };
       if (!name) name = n;
@@ -106,6 +124,10 @@
         <label class="field">
           <span>File ({formats}) – select environment files together with the collection</span>
           <input type="file" {accept} multiple onchange={onfile} />
+        </label>
+        <label class="field">
+          <span>or a folder (Bruno collection)</span>
+          <input type="file" webkitdirectory onchange={onfolder} />
         </label>
         {#if imported?.result}
           {@const r = imported.result}
