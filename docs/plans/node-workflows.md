@@ -1,6 +1,24 @@
 # Plan: Node-based workflows (not started)
 
-Status: idea captured 2026-10-28, nothing implemented yet.
+Status: first version on branch `feature/workflows` (2026-10-28): engine, canvas editor, CLI; see `docs/workflows.md`.
+Done since: request Inputs tab, set variable / filter / assert / delay / transform / merge, parallel for each
+(checkbox + limit), request errors and response mode, editor checks, folders.
+
+## Next steps (noted 2026-10-29)
+
+- **Assert as a test node:** report every check as a test result (✔/✘) in the workflow result, with a
+  summary ("5 passed, 1 failed") in the panel and the CLI; option "report only, don't stop" so all checks
+  run and the run still counts as failed (CI red). Without this, Script + throw and request tests cover it.
+- **Request node:** retry (attempts + wait) and a timeout per node.
+- **For each:** show results per item in the panel, not only the last one; real loop bodies (several
+  nodes per item) instead of a single node or a Run workflow node.
+- **Manual start:** configure like a call (params, headers, body, auth), as in the original idea.
+- **Expressions:** label clearly where JavaScript (switch, filter, assert, script) and where `{{…}}`
+  templates (set variable, transform, paths) are used.
+- **Variables:** sub-workflows share `vars` with the caller; document it or give them their own scope.
+- For i, While, Listen for request starter (port setting), zoom, multi-select, undo.
+
+Still open from the original idea: For i, While, Listen for request, zoom.
 
 ## Terminology change
 

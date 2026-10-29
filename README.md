@@ -8,6 +8,8 @@ text files that live in your folder (or your browser) and can be versioned with 
 - Environments as dotenv files: shared values in `<name>.env.pub` (committed) overlaid by private
   secrets in `<name>.env` (gitignored)
 - Runners: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
+- Workflows: node-based flows on a canvas — call requests, compute with JavaScript, switch, loop, read and
+  write files, call other workflows ([docs](docs/workflows.md))
 - JavaScript scripting (QuickJS) before/after requests and before/after runners: read, iterate, write files
 - Import: paste cURL or a raw HTTP request into a new request; Postman collections (v2.x, with
   environments), OpenAPI 3.x / Swagger 2.0, `.http` files (JetBrains/VS Code) and HAR as new collections,

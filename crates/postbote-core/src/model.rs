@@ -132,6 +132,9 @@ pub struct Request {
     pub scripts: Scripts,
     pub docs: String,
     pub seq: i64,
+    /// sample values for `{{input.x}}` when the request runs on its own
+    /// (a workflow's node input replaces them); `_` = the whole `{{input}}`
+    pub inputs: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -188,6 +191,47 @@ pub fn load_request(fs: &dyn Fs, p: &str) -> Result<Request> {
 pub fn load_workflow(fs: &dyn Fs, p: &str) -> Result<Workflow> {
     if !p.ends_with(RUNNER_EXT) {
         bail!("{p} is not a runner file (*{RUNNER_EXT})");
+    }
+    decode(fs, p)
+}
+
+/// A node-based workflow (`workflows/**/<name>.workflow.yaml`): nodes connected
+/// by edges from an output port (`out`, `err`, a switch case or `default`) to
+/// the input of another node. Type-specific settings stay in `cfg`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Graph {
+    pub name: String,
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GraphNode {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub name: String,
+    /// expected input: json | csv | text | file | none ("" accepts anything)
+    pub input: String,
+    #[serde(flatten)]
+    pub cfg: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct GraphEdge {
+    pub from: String,
+    pub out: String,
+    pub to: String,
+}
+
+pub const GRAPH_EXT: &str = ".workflow.yaml";
+
+pub fn load_graph(fs: &dyn Fs, p: &str) -> Result<Graph> {
+    if !p.ends_with(GRAPH_EXT) {
+        bail!("{p} is not a workflow file (*{GRAPH_EXT})");
     }
     decode(fs, p)
 }

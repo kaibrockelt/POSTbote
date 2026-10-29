@@ -221,6 +221,19 @@
     var src = call('slot', 'script');
     try { (new Function(src))(); return ''; } catch (e) { return errText(e); }
   };
+  // workflow nodes: compute code and switch cases see `input`
+  g.__runCompute = function () {
+    var src = call('slot', 'script'), input = JSON.parse(call('slot', 'input'));
+    try {
+      var v = (new Function('input', src))(input);
+      return JSON.stringify({ v: v === undefined ? null : v });
+    } catch (e) { return JSON.stringify({ e: errText(e) }); }
+  };
+  g.__evalCase = function () {
+    var src = call('slot', 'script'), input = JSON.parse(call('slot', 'input'));
+    try { return JSON.stringify({ v: !!(new Function('input', 'return (' + src + '\n);'))(input) }); }
+    catch (e) { return JSON.stringify({ e: errText(e) }); }
+  };
   g.__evalCond = function () {
     var src = call('slot', 'script');
     try { return JSON.stringify({ v: !!(new Function('return (' + src + '\n);'))() }); }

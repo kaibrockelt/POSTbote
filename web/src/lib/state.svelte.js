@@ -561,7 +561,7 @@ export function tabTitle(t) {
   if (t.kind === 'file') return basename(t.path);
   const name = parseYaml(text).doc?.name;
   if (name) return String(name);
-  return basename(t.path).replace(/\.(req|flow)\.yaml$/, '');
+  return basename(t.path).replace(/\.(req|runner|workflow)\.yaml$/, '');
 }
 
 /** Activates an environment by name ('' = none). */
@@ -657,7 +657,8 @@ export async function exportWorkspace(files) {
 
 // ------------------------------------------------------------ running
 
-export async function run(kind, path) {
+/** opts.starter: node workflows start at this starter node (default: first manual one). */
+export async function run(kind, path, opts = {}) {
   if (app.running[path]) return;
   await flush();
   const ctrl = new AbortController();
@@ -666,6 +667,7 @@ export async function run(kind, path) {
     // runs use what the editors show, including unsaved drafts
     const body = { kind, path, env: app.env || undefined, overrides: $state.snapshot(app.drafts) };
     if (kind === 'workflow') body.data = workflowData(path);
+    if (kind === 'graph' && opts.starter) body.starter = opts.starter;
     if (app.ws.storage === 'browser') body.files = $state.snapshot(app.files);
     else body.workspace = app.ws.id;
     const out = await api.run(body, ctrl.signal);

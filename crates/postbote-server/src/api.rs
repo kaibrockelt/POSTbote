@@ -308,6 +308,8 @@ struct RunReq {
     env: Option<String>,
     /// runner rows from the editor (replaces the data file)
     data: Option<String>,
+    /// node workflow: starter node to begin with
+    starter: Option<String>,
 }
 
 struct CancelOnDrop(Arc<AtomicBool>);
@@ -322,6 +324,7 @@ async fn run(State(s): State<Arc<AppState>>, User(u): User, Json(r): Json<RunReq
     let target = match r.kind.as_str() {
         "request" => Target::Request(r.path),
         "workflow" => Target::Workflow(r.path),
+        "graph" => Target::Graph(r.path, r.starter.filter(|s| !s.is_empty())),
         k => return Err(err(StatusCode::BAD_REQUEST, format!("unknown run kind {k:?}"))),
     };
     let env = r.env.filter(|e| !e.is_empty());

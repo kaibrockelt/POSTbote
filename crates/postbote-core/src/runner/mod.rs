@@ -4,6 +4,7 @@
 //! native side through a single `__host(op, argsJson)` function (see
 //! `prelude.js` and `host.rs`), which keeps the FFI surface tiny.
 
+mod graph;
 mod host;
 pub mod http;
 
@@ -146,6 +147,8 @@ pub struct RunOutput {
     pub request: Option<RequestResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflow: Option<WorkflowResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<graph::GraphResult>,
     /// files written by the run (environment updates, fs.write); None = deleted
     pub changed_files: BTreeMap<String, Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -157,6 +160,7 @@ impl RunOutput {
         self.error.is_some()
             || self.request.as_ref().is_some_and(|r| r.failed())
             || self.workflow.as_ref().is_some_and(|w| w.error.is_some() || !w.script_errors.is_empty() || w.failed > 0)
+            || self.graph.as_ref().is_some_and(|g| g.error.is_some())
     }
 }
 
@@ -166,6 +170,8 @@ impl RunOutput {
 pub enum Target {
     Request(String),
     Workflow(String),
+    /// node workflow and the starter node to begin with (default: the first manual starter)
+    Graph(String, Option<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +260,15 @@ struct State {
     row: Option<Value>,
     /// collection + folder variables of the request being executed
     scope_vars: BTreeMap<String, String>,
+    /// workflow node input: `{{input}}` / `{{input.field}}` in a called request
+    graph_input: Option<Value>,
+    /// top-level fields of a JSON node input: override folder/collection
+    /// variables of a called request, never the environment
+    input_vars: BTreeMap<String, String>,
+    /// workflow call node with "use folder settings" off
+    skip_folders: bool,
+    /// graph_input came from the request's own sample inputs (cleared after it)
+    input_from_request: bool,
     tests: Vec<TestResult>,
     logs: Vec<LogEntry>,
     source: String,
@@ -289,6 +304,39 @@ fn ignore_cookies(fs: &mut dyn Fs) -> anyhow::Result<()> {
     fs.write(".gitignore", &next)
 }
 
+/// A request ready to send (see `prepare_request` / `finish_request`).
+struct Prepared {
+    out: OutReq,
+    /// the script `req` object, restored before the post-response scripts
+    req_json: String,
+    post: Vec<(String, String)>,
+}
+
+/// `{"user.name": "ada"}` → `{"user": {"name": "ada"}}`; `_` is the whole input.
+fn inputs_value(inputs: &BTreeMap<String, String>) -> Value {
+    if let Some(whole) = inputs.get("_") {
+        return serde_json::from_str(whole).unwrap_or_else(|_| Value::String(whole.clone()));
+    }
+    fn put(target: &mut Value, path: &[&str], v: &str) {
+        if !target.is_object() {
+            *target = Value::Object(Map::new());
+        }
+        let obj = target.as_object_mut().expect("object");
+        match path {
+            [last] => {
+                obj.insert(last.to_string(), Value::String(v.to_string()));
+            }
+            [first, rest @ ..] => put(obj.entry(first.to_string()).or_insert(Value::Null), rest, v),
+            [] => {}
+        }
+    }
+    let mut root = Value::Object(Map::new());
+    for (key, v) in inputs {
+        put(&mut root, &key.split('.').collect::<Vec<_>>(), v);
+    }
+    root
+}
+
 fn var_text(v: &Value) -> String {
     host::value_to_text(v)
 }
@@ -318,6 +366,22 @@ impl State {
         }
         if let Some(v) = self.env.get(name) {
             return Some((v.clone(), true));
+        }
+        // workflow inputs are data like runtime values: never interpolated again
+        if let Some(v) = self.input_vars.get(name) {
+            return Some((v.clone(), false));
+        }
+        if let Some(input) = &self.graph_input {
+            if name == "input" {
+                return Some((var_text(input), false));
+            }
+            if let Some(path) = name.strip_prefix("input.") {
+                let found = path.split('.').try_fold(input, |v, k| match v {
+                    Value::Array(a) => k.parse::<usize>().ok().and_then(|i| a.get(i)),
+                    _ => v.get(k),
+                });
+                return found.map(|v| (var_text(v), false));
+            }
         }
         if let Some(v) = self.scope_vars.get(name) {
             return Some((v.clone(), true));
@@ -456,6 +520,10 @@ impl Engine {
             vars: Map::new(),
             row: None,
             scope_vars: BTreeMap::new(),
+            graph_input: None,
+            input_vars: BTreeMap::new(),
+            skip_folders: false,
+            input_from_request: false,
             tests: Vec::new(),
             logs: Vec::new(),
             source: String::new(),
@@ -559,6 +627,13 @@ impl Engine {
         let start = Instant::now();
         let mut res = RequestResult { path: path.to_string(), ..Default::default() };
         self.exec_request_inner(path, step, &mut res);
+        {
+            let mut st = self.st.borrow_mut();
+            if st.input_from_request {
+                st.graph_input = None;
+                st.input_from_request = false;
+            }
+        }
         let (tests, logs) = self.drain();
         res.tests.extend(tests);
         res.logs.extend(logs);
@@ -567,17 +642,38 @@ impl Engine {
     }
 
     fn exec_request_inner(&self, path: &str, step: Option<&Step>, res: &mut RequestResult) {
+        let Some(prepared) = self.prepare_request(path, step, res) else { return };
+        if self.clock.cancelled() {
+            res.error = Some(self.clock.reason().into());
+            return;
+        }
+        let sent = self.st.borrow().http.send(&prepared.out);
+        self.finish_request(prepared, sent, res);
+    }
+
+    /// Everything up to the HTTP call: variables, pre-request scripts, the
+    /// final request. `None` = stopped (the error is in `res`).
+    fn prepare_request(&self, path: &str, step: Option<&Step>, res: &mut RequestResult) -> Option<Prepared> {
         let loaded = {
             let st = self.st.borrow();
-            model::load_request(&st.fs, path).and_then(|r| Ok((r, model::load_folder_chain(&st.fs, path)?)))
+            let skip = st.skip_folders;
+            model::load_request(&st.fs, path).and_then(|r| Ok((r, if skip { Vec::new() } else { model::load_folder_chain(&st.fs, path)? })))
         };
         let (req, folders) = match loaded {
             Ok(x) => x,
             Err(e) => {
                 res.error = Some(format!("{e:#}"));
-                return;
+                return None;
             }
         };
+        // run on its own: the request's sample inputs stand in for a workflow node input
+        {
+            let mut st = self.st.borrow_mut();
+            if st.graph_input.is_none() && !req.inputs.is_empty() {
+                st.graph_input = Some(inputs_value(&req.inputs));
+                st.input_from_request = true;
+            }
+        }
         res.name = if req.name.is_empty() {
             path.rsplit('/').next().unwrap_or(path).trim_end_matches(model::REQUEST_EXT).to_string()
         } else {
@@ -621,7 +717,7 @@ impl Engine {
         self.slot("req", data.to_string());
         if let Err(e) = self.eval_unit("globalThis.req = __makeReq(__slot('req')); globalThis.res = undefined;") {
             res.error = Some(e);
-            return;
+            return None;
         }
 
         let mut pre: Vec<(String, &str)> = vec![("collection pre-request".into(), col.scripts.pre.as_str())];
@@ -636,7 +732,7 @@ impl Engine {
             if let Err(e) = self.run_script(code, &source) {
                 res.script_errors.push(e);
                 res.error = Some("pre-request script failed, request not sent".into());
-                return;
+                return None;
             }
         }
 
@@ -647,7 +743,7 @@ impl Engine {
             Ok(x) => x,
             Err(e) => {
                 res.error = Some(format!("request object: {e}"));
-                return;
+                return None;
             }
         };
 
@@ -655,7 +751,7 @@ impl Engine {
             Ok(o) => o,
             Err(e) => {
                 res.error = Some(e);
-                return;
+                return None;
             }
         };
         res.request = Some(SentRequest {
@@ -671,14 +767,24 @@ impl Engine {
             },
         });
 
-        if self.clock.cancelled() {
-            res.error = Some(self.clock.reason().into());
-            return;
+        let mut post: Vec<(String, String)> = vec![("collection post-response".into(), col.scripts.post.clone())];
+        for f in &folders {
+            post.push((format!("folder {} post-response", f.path), f.scripts.post.clone()));
         }
-        let sent = {
-            let st = self.st.borrow();
-            st.http.send(&out)
-        };
+        post.push(("post-response".into(), req.scripts.post.clone()));
+        if let Some(s) = step {
+            post.push((format!("step {} post", s.name), s.scripts.post.clone()));
+        }
+        let req_json = self.eval_str("JSON.stringify(__exportReq(req))").unwrap_or_default();
+        Some(Prepared { out, req_json, post })
+    }
+
+    /// After the HTTP call: the response object and post-response scripts.
+    /// `req` is restored first, so batches can finish one after another.
+    fn finish_request(&self, p: Prepared, sent: Result<Response, String>, res: &mut RequestResult) {
+        self.slot("req", p.req_json);
+        let _ = self.eval_unit("globalThis.req = __makeReq(JSON.parse(__slot('req')));");
+
         let response = match sent {
             Ok(r) => r,
             Err(e) => {
@@ -693,16 +799,8 @@ impl Engine {
             return;
         }
 
-        let mut post: Vec<(String, &str)> = vec![("collection post-response".into(), col.scripts.post.as_str())];
-        for f in &folders {
-            post.push((format!("folder {} post-response", f.path), f.scripts.post.as_str()));
-        }
-        post.push(("post-response".into(), req.scripts.post.as_str()));
-        if let Some(s) = step {
-            post.push((format!("step {} post", s.name), s.scripts.post.as_str()));
-        }
-        for (source, code) in post {
-            if let Err(e) = self.run_script(code, &source) {
+        for (source, code) in &p.post {
+            if let Err(e) = self.run_script(code, source) {
                 res.script_errors.push(e);
             }
         }
@@ -1110,6 +1208,7 @@ pub fn run(fs: Box<dyn Fs>, target: Target, opts: RunOptions) -> RunOutput {
     match &target {
         Target::Request(p) => out.request = Some(engine.exec_request(p, None)),
         Target::Workflow(p) => out.workflow = Some(engine.exec_workflow(p)),
+        Target::Graph(p, starter) => out.graph = Some(engine.exec_graph(p, starter.as_deref(), None, 0)),
     }
     match engine.finish() {
         Ok(changes) => out.changed_files = changes,
