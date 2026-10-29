@@ -118,7 +118,9 @@ test('requests: url, path variables, params, headers, auth, body', () => {
   assert.equal(get.auth.type, 'inherit');
   assert.equal(get.docs, 'Returns one user.');
   assert.match(get.scripts.post, /^\/\/ Postman test script/);
-  assert.ok(r.collection.variables.some((v) => v.key === 'id' && v.value === '42'));
+  // :id is a request variable with Postman's value as default
+  assert.deepEqual(get.variables.map((v) => [v.key, v.value]), [['id', '42']]);
+  assert.ok(!r.collection.variables.some((v) => v.key === 'id'));
 
   assert.equal(create.auth.type, 'none');
   assert.equal(create.body.type, 'json');

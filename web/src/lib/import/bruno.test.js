@@ -214,10 +214,7 @@ test('a Bruno folder becomes a collection', () => {
   assert.equal(r.format, 'Bruno collection (folder, zip or JSON export)');
   assert.equal(r.name, 'Shop API');
   assert.deepEqual(r.collection.auth, { type: 'bearer', token: '{{token}}' });
-  assert.deepEqual(r.collection.variables.map((v) => [v.key, v.value]), [
-    ['apiVersion', 'v2'],
-    ['id', '42'],
-  ]);
+  assert.deepEqual(r.collection.variables.map((v) => [v.key, v.value]), [['apiVersion', 'v2']]);
   assert.equal(r.collection.headers[0].key, 'Accept');
   assert.match(r.docs, /All endpoints/);
 
@@ -236,6 +233,7 @@ test('a Bruno folder becomes a collection', () => {
 
   const get = req('Get user');
   assert.equal(get.url, '{{baseUrl}}/users/{{id}}');
+  assert.deepEqual(get.variables.map((v) => [v.key, v.value]), [['id', '42']]);
   assert.deepEqual(get.params.map((p) => [p.key, p.disabled]), [
     ['expand', false],
     ['trace', true],
@@ -248,7 +246,9 @@ test('a Bruno folder becomes a collection', () => {
 
   const create = req('Create user');
   assert.deepEqual(create.auth, { type: 'none' });
-  assert.equal(create.scripts.pre, 'vars.set("stamp", vars.interpolate("{{apiVersion}}-x"));');
+  // vars:pre-request are request variables, no script detour
+  assert.deepEqual(create.variables.map((v) => [v.key, v.value]), [['stamp', '{{apiVersion}}-x']]);
+  assert.equal(create.scripts.pre, '');
 
   const login = req('Login');
   assert.deepEqual(login.auth, { type: 'basic', username: 'kai', password: 'hunter2' });

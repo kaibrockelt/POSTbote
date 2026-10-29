@@ -19,11 +19,17 @@ edges:
   - { from: save, out: out, to: done }
 ```
 
-## Inputs in requests
+## Requests as functions: request variables
 
-A request can use `{{input}}` or `{{input.field}}` (nested: `{{input.user.name}}`). Its **Inputs** tab
-appears as soon as such a placeholder is used and holds sample values (saved as `inputs:` in the request
-file) for sending it on its own; when a workflow calls the request, the node input replaces them.
+A request declares its parameters in its **Variables** tab (`variables:` in the request file) and uses
+them like any variable: `{{userId}}`. Sent on its own, the defaults apply. Called by a workflow, the top-level
+fields of a JSON input fill the declared variables of the same name — and nothing else: folder,
+collection and environment values cannot be changed by an input. Environment values also win over
+request variables. Values from an input are inserted literally, never resolved again.
+
+`{{input}}` (the whole input, also text or CSV) and `{{input.field}}` (nested: `{{input.user.name}}`)
+read the node input directly. For sending the request on its own, the request variable `input` holds a
+sample (JSON is parsed, so `{{input.field}}` works too).
 
 ## Values and ports
 
@@ -39,7 +45,7 @@ file) for sending it on its own; when a workflow calls the request, the node inp
 | --- | --- |
 | `manual` | Starter with a play button; its output is the payload (`payloadType` json, csv — rows with a header become JSON objects — or text). |
 | `fromWorkflow` | Starter used when another workflow calls this one; output = the caller's input. |
-| `request` | Runs a collection request. `{{input}}` / `{{input.field}}` work anywhere in the request; top-level fields of a JSON input override folder and collection variables of the same name, never environment values. `useFolder: false` ignores folder variables, headers, auth and scripts. Output = response body (JSON if it parses, else text), or with `output: response` the object `{ status, headers, body }`. HTTP status ≥ 400 and failed tests go to `err` unless `failOnError: false`. |
+| `request` | Runs a collection request. Top-level fields of a JSON input fill the request's declared variables (shown on the node); `{{input}}` / `{{input.field}}` work anywhere in the request. `useFolder: false` ignores folder variables, headers, auth and scripts. Output = response body (JSON if it parses, else text), or with `output: response` the object `{ status, headers, body }`. HTTP status ≥ 400 and failed tests go to `err` unless `failOnError: false`. |
 | `script` | JavaScript with `input` (same sandbox as request scripts: `env`, `vars`, `fs`, `csv`, `util`); `return` gives the output, `throw` goes to `err`. |
 | `setVar` | Stores `value` (a template, e.g. `{{input.access_token}}`; empty = the whole input) as `variable` in the run variables (`scope: vars`) or the private environment values (`scope: env`). Later requests use it as `{{variable}}`. Passes the input on. |
 | `transform` | Builds the output from `template` — JSON (or text) with `{{input.x}}` and other variables. |

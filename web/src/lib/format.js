@@ -100,6 +100,7 @@ export const emptyRequest = (name) => ({
   name,
   method: 'GET',
   url: '{{baseUrl}}/',
+  variables: [],
   params: [],
   headers: [],
   auth: { type: 'inherit' },
@@ -118,6 +119,7 @@ export function parseRequest(text) {
       name: str(doc.name),
       method: str(doc.method).toUpperCase() || 'GET',
       url: str(doc.url),
+      variables: mapToKv(doc.variables),
       params: normKv(doc.params),
       headers: normKv(doc.headers),
       auth: normAuth(doc.auth),
@@ -125,7 +127,6 @@ export function parseRequest(text) {
       scripts: normScripts(doc.scripts),
       docs: str(doc.docs),
       seq: doc.seq,
-      inputs: Object.fromEntries(Object.entries(doc.inputs && typeof doc.inputs === 'object' ? doc.inputs : {}).map(([k, v]) => [k, str(v)])),
     },
   };
 }
@@ -142,6 +143,7 @@ export function serializeRequest(r) {
       name: r.name,
       method: r.method || 'GET',
       url: r.url ?? '',
+      variables: kvToMap(r.variables),
       params: cleanKv(r.params),
       headers: cleanKv(r.headers),
       auth: cleanAuth(r.auth),
@@ -149,7 +151,6 @@ export function serializeRequest(r) {
       scripts: cleanScripts(r.scripts),
       docs: r.docs,
       seq: r.seq,
-      inputs: prune(r.inputs || {}),
     }),
   );
 }

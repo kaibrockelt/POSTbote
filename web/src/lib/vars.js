@@ -1,6 +1,6 @@
 // Static view of the variables a request can see, used for highlighting,
 // autocomplete and code snippets. Mirrors the runtime lookup order:
-// runtime vars > data row > environment > folders > collection.
+// runtime vars > data row > environment > request > folders > collection.
 import {
   MANIFEST,
   FOLDER_FILE,
@@ -25,11 +25,13 @@ export const SOURCE_LABEL = {
   env: 'Environment variable (private)',
   runtime: 'Set at runtime (script or runner data)',
   builtin: 'Built-in dynamic value',
-  input: 'Workflow input (sample value from the Inputs tab)',
+  request: 'Request variable (default; a workflow fills it from its input)',
+  input: 'Workflow input (sample from the request variable “input”)',
   missing: 'Unresolved',
 };
 
 const INPUT_RE = /\{\{\s*input(?:\.([^{}\s]+))?\s*\}\}/g;
+const isEnv = (v) => v && (v.source === 'env' || v.source === 'envpub');
 
 /** Keys of {{input}} / {{input.x}} placeholders used in a request doc ('_' = the whole input). */
 export function inputKeys(doc) {
@@ -38,15 +40,36 @@ export function inputKeys(doc) {
   return [...keys];
 }
 
-/** Adds the request's sample inputs (and used input placeholders) to a scope. */
-export function withInputs(scope, doc) {
-  const inputs = doc?.inputs || {};
-  const keys = new Set([...inputKeys(doc), ...Object.keys(inputs)]);
-  if (!keys.size) return scope;
+/** Declared request variables whose name the environment also sets (the environment wins). */
+export function shadowedByEnv(scope, doc) {
+  return (doc?.variables || []).filter((r) => r.key && r.key !== 'input' && isEnv(scope.get(r.key))).map((r) => r.key);
+}
+
+/**
+ * Adds the request's variables to a scope: above folders and collection,
+ * below the environment. The variable `input` is the sample for
+ * {{input}} / {{input.x}} when the request runs on its own.
+ */
+export function withRequestVars(scope, doc) {
+  const vars = (doc?.variables || []).filter((r) => r.key);
+  const keys = inputKeys(doc);
+  if (!vars.length && !keys.length) return scope;
   const m = new Map(scope);
+  for (const r of vars) {
+    if (r.key === 'input' || isEnv(m.get(r.key))) continue;
+    m.set(r.key, { name: r.key, value: r.value, source: 'request', label: 'Request variable' });
+  }
+  const raw = vars.find((r) => r.key === 'input')?.value ?? '';
+  let sample = raw;
+  try {
+    sample = JSON.parse(raw);
+  } catch {}
   for (const k of keys) {
     const name = k === '_' ? 'input' : `input.${k}`;
-    m.set(name, { name, value: inputs[k] ?? '', source: 'input', label: 'Inputs tab' });
+    let value = k === '_' ? raw : k.split('.').reduce((o, p) => (o == null ? undefined : o[p]), sample);
+    if (value == null) value = '';
+    else if (typeof value === 'object') value = JSON.stringify(value);
+    m.set(name, { name, value: String(value), source: 'input', label: 'Request variable “input”' });
   }
   return m;
 }
@@ -134,7 +157,7 @@ export function interpolate(text, scope, depth = 0) {
     const v = scope.get(n.trim());
     // workflow inputs are data: inserted literally, never resolved again
     if (v?.source === 'input') return v.value === '' ? m : v.value;
-    if (!v || !['collection', 'folder', 'envpub', 'env'].includes(v.source)) return m;
+    if (!v || !['collection', 'folder', 'request', 'envpub', 'env'].includes(v.source)) return m;
     return depth < 4 && v.value.includes('{{') ? interpolate(v.value, scope, depth + 1) : v.value;
   });
 }

@@ -166,7 +166,9 @@ test('OpenAPI 3.1: structure, servers, security', () => {
   ]);
   assert.deepEqual(r.collection.auth, { type: 'bearer', token: '{{token}}' });
   assert.equal(r.collection.variables.find((v) => v.key === 'baseUrl').value, 'https://eu.shop.test/v2');
-  assert.equal(r.collection.variables.find((v) => v.key === 'userId').value, '42');
+  // path parameters are request variables with the example as default
+  assert.ok(!r.collection.variables.some((v) => v.key === 'userId'));
+  assert.equal(r.requests.flatMap((q) => q.doc.variables).find((v) => v.key === 'userId').value, '42');
   assert.deepEqual(r.environments.map((e) => e.name), ['production', 'staging']);
   assert.deepEqual(r.environments[0].values, [
     { key: 'baseUrl', value: 'https://{{region}}.shop.test/v2', secret: false },
@@ -238,7 +240,7 @@ test('Swagger 2.0', () => {
   assert.equal(replace.body.type, 'json');
   assert.deepEqual(JSON.parse(replace.body.content), { name: 'Rex', age: 0 });
   assert.deepEqual(replace.params.map((p) => [p.key, p.value, p.disabled]), [['dry', 'false', true]]);
-  assert.equal(r.collection.variables.find((v) => v.key === 'petId').value, 'p1');
+  assert.deepEqual(update.variables.map((v) => [v.key, v.value]), [['petId', 'p1']]);
 });
 
 test('through the builder: files, environments, secrets', () => {

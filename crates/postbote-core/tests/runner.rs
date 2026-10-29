@@ -407,14 +407,14 @@ edges:
         &base,
         &[
             ("postbote.yaml", &format!("version: 1\nname: T\nvariables:\n  baseUrl: {base}\n  color: blue\n")),
-            ("requests/item.req.yaml", "name: Item\nurl: \"{{baseUrl}}/item/{{input.id}}\"\nheaders:\n  - key: X-Color\n    value: \"{{color}}\"\n  - key: X-Region\n    value: \"{{region}}\"\n"),
+            ("requests/item.req.yaml", "name: Item\nurl: \"{{baseUrl}}/item/{{input.id}}\"\nvariables:\n  color: red\n  region: us\nheaders:\n  - key: X-Color\n    value: \"{{color}}\"\n  - key: X-Region\n    value: \"{{region}}\"\n"),
             ("workflows/onboard.workflow.yaml", graph),
         ],
     );
     let out = run(fs, Target::Graph("workflows/onboard.workflow.yaml".into(), None), opts());
     let g = out.graph.unwrap();
     assert!(g.error.is_none(), "{:?} {:#?}", g.error, g.steps);
-    // input fields override collection variables (color) but never the environment (region=eu)
+    // input fields fill the declared request variables (color) but never beat the environment (region=eu)
     let expected = serde_json::json!(["/item/1|green|eu", "/item/2|green|eu", "/item/3|green|eu"]);
     assert_eq!(g.result.unwrap(), expected);
     assert_eq!(g.steps.iter().filter(|s| s.kind == "request").count(), 3);
@@ -471,19 +471,41 @@ edges:
 }
 
 #[test]
-fn request_inputs_sample_values_and_workflow_override() {
+fn request_variables_defaults_and_workflow_input() {
     let base = echo_server();
-    let req = "name: User\nurl: \"{{baseUrl}}/users/{{input.id}}/{{input.org.name}}\"\ninputs:\n  id: \"7\"\n  org.name: acme\n";
+    let req = "name: User\nurl: \"{{baseUrl}}/users/{{id}}/{{org}}?q={{input.q}}\"\nvariables:\n  id: \"7\"\n  org: \"{{tenant}}-org\"\n  input: '{\"q\": \"x\"}'\n";
     let flow = "nodes:\n  - { id: s, type: manual, payloadType: csv, payload: \"id,org\\n42,x\" }\n  - { id: e, type: forEach, child: c }\n  - { id: c, type: request, request: requests/user.req.yaml }\n  - { id: r, type: return }\nedges:\n  - { from: s, out: out, to: e }\n  - { from: e, out: out, to: r }\n";
-    let mk = || collection(&base, &[("requests/user.req.yaml", req), ("workflows/f.workflow.yaml", flow)]);
-    // on its own: the sample inputs
+    let manifest = format!("version: 1\nname: T\nvariables:\n  baseUrl: {base}\n  tenant: acme\n");
+    let mk = || collection(&base, &[("postbote.yaml", &manifest), ("requests/user.req.yaml", req), ("workflows/f.workflow.yaml", flow)]);
+    // on its own: the defaults (configured: may nest {{tenant}}); `input` is the sample input
     let r = run(mk(), Target::Request("requests/user.req.yaml".into()), opts()).request.unwrap();
     assert!(r.error.is_none(), "{:?}", r.error);
-    assert!(r.request.unwrap().url.ends_with("/users/7/acme"));
-    // from a workflow (CSV start → JSON rows): the node input replaces them (org.name missing → unresolved)
+    assert!(r.request.unwrap().url.ends_with("/users/7/acme-org?q=x"), "tenant=acme from the collection");
+    // from a workflow (CSV start → JSON rows): the row fills id and org; input.q is missing now
     let g = run(mk(), Target::Graph("workflows/f.workflow.yaml".into(), None), opts()).graph.unwrap();
     let call = g.steps.iter().find(|s| s.kind == "request").unwrap();
-    assert!(call.error.as_deref().unwrap_or("").contains("{{input.org.name}}"), "{:?}", call.error);
+    let err = call.error.as_deref().unwrap_or("");
+    assert!(err.contains("{{input.q}}") && !err.contains("{{id}}") && !err.contains("{{org}}"), "{err}");
+}
+
+#[test]
+fn workflow_input_only_fills_declared_request_variables() {
+    let base = echo_server();
+    // the input names a collection variable (baseUrl) and an undeclared one: both are ignored
+    let flow = "nodes:\n  - { id: s, type: manual, payload: '{\"baseUrl\": \"http://evil.test\", \"color\": \"green\", \"size\": \"L\"}' }\n  - { id: r, type: request, request: requests/echo.req.yaml }\n  - { id: d, type: return }\nedges:\n  - { from: s, out: out, to: r }\n  - { from: r, out: out, to: d }\n";
+    let fs = collection(
+        &base,
+        &[
+            ("postbote.yaml", &format!("version: 1\nname: T\nvariables:\n  baseUrl: {base}\n  color: blue\n")),
+            ("requests/echo.req.yaml", "name: Echo\nurl: \"{{baseUrl}}/echo\"\nvariables:\n  size: M\nheaders:\n  - key: X-Color\n    value: \"{{color}}\"\n  - key: X-Size\n    value: \"{{size}}\"\n"),
+            ("workflows/w.workflow.yaml", flow),
+        ],
+    );
+    let g = run(fs, Target::Graph("workflows/w.workflow.yaml".into(), None), opts()).graph.unwrap();
+    assert!(g.error.is_none(), "{:?}", g.error);
+    let headers = &g.result.unwrap()["headers"];
+    assert_eq!(headers["x-color"], "blue");
+    assert_eq!(headers["x-size"], "L");
 }
 
 #[test]
@@ -582,7 +604,7 @@ fn workflow_inputs_never_pull_in_secrets() {
     let fs = collection(
         &base,
         &[
-            ("requests/echo.req.yaml", "name: Echo\nurl: \"{{baseUrl}}/echo\"\nheaders:\n  - key: X-Input\n    value: \"{{input.x}}\"\n  - key: X-Var\n    value: \"{{x}}\"\n"),
+            ("requests/echo.req.yaml", "name: Echo\nurl: \"{{baseUrl}}/echo\"\nvariables:\n  x: \"\"\nheaders:\n  - key: X-Input\n    value: \"{{input.x}}\"\n  - key: X-Var\n    value: \"{{x}}\"\n"),
             ("workflows/w.workflow.yaml", flow),
         ],
     );

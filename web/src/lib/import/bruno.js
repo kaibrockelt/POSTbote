@@ -5,7 +5,8 @@
 //   paths inside the folder
 // - Bruno's JSON export (one file with items, environments, root)
 //
-// .bru files are parsed into the shape of the JSON export first. Assertions and
+// .bru files are parsed into the shape of the JSON export first. Request vars
+// and path parameters become request variables; assertions and
 // vars:post-response become real POSTBote tests/scripts; bru.* scripts are kept
 // as comments, like Postman scripts.
 import { slug, parseEnv } from '../format.js';
@@ -213,7 +214,7 @@ export function parseBruno(inputs) {
   if (!exp && !folderInputs.some((i) => isBruFile(i.name))) throw new Error('No Bruno requests found. Choose the collection folder (or a zip of it), or Bruno’s JSON export.');
   const c = exp ? exp.json : fromFolder(inputs);
   const warnings = new Set();
-  const ctx = { warnings, pathVars: new Map(), dynamic: new Set(), processEnv: new Set(), scripts: 0 };
+  const ctx = { warnings, dynamic: new Set(), processEnv: new Set(), scripts: 0 };
 
   const rootReq = c.root?.request || {};
   const variables = on(rootReq.vars?.req).map((v) => kv(v.name, v.value));
@@ -237,13 +238,6 @@ export function parseBruno(inputs) {
   };
 
   walk(c.items, 'requests', result, ctx);
-
-  // :id path parameters become {{id}}; their values become collection variables
-  for (const [key, value] of ctx.pathVars) {
-    const have = result.collection.variables.find((v) => v.key === key);
-    if (!have) result.collection.variables.push(kv(key, value));
-    else if (value && have.value !== value) warnings.add(`Path parameter :${key} has different values; kept “${have.value}”`);
-  }
 
   // {{process.env.X}} reads Bruno's .env (gitignored): becomes a private value {{X}}
   ctx.dotenv = new Map((c.dotenv || []).map((e) => [e.key, e.value]));
@@ -317,22 +311,31 @@ function convertRequest(it, ctx) {
         return i < 0 ? kv(p, '') : kv(p.slice(0, i), p.slice(i + 1));
       });
   }
-  for (const p of params) if (p?.type === 'path' && p.name && !ctx.pathVars.get(p.name)) ctx.pathVars.set(str(p.name), str(p.value));
+  // request variables: path parameters (:id → {{id}}) and vars:pre-request
+  const variables = [];
+  const declare = (key, value) => {
+    const have = variables.find((v) => v.key === key);
+    if (!have) variables.push(kv(key, value));
+    else if (value) have.value = str(value);
+  };
   url = url.replace(/(\/):([A-Za-z_][\w-]*)(?=\/|$)/g, (_, slash, name) => {
-    if (!ctx.pathVars.has(name)) ctx.pathVars.set(name, '');
+    declare(name, '');
     return `${slash}{{${name}}}`;
   });
+  for (const p of params) if (p?.type === 'path' && p.name) declare(str(p.name), p.value);
+  for (const v of on(r.vars?.req)) declare(str(v.name), v.value);
 
   const headers = headersOf(r.headers);
   const doc = {
     name: str(it.name) || 'request',
     method: str(r.method || 'GET').toUpperCase(),
     url,
+    variables,
     params: query,
     headers,
     auth: convertAuth(r.auth, where, ctx),
     body: convertBody(r.body, headers, where, ctx),
-    scripts: scriptsOf(r, ctx, true),
+    scripts: scriptsOf(r, ctx),
     docs: str(r.docs ?? it.docs),
   };
   for (const m of JSON.stringify(doc).matchAll(/\{\{\s*(\$[A-Za-z]+)\s*\}\}/g)) ctx.dynamic.add(m[1]);
@@ -436,12 +439,8 @@ const bruRes = { status: res.status, statusText: res.statusText, headers: res.he
 Object.assign(bruRes, { getStatus: () => bruRes.status, getBody: () => bruRes.body, getHeader: (n) => res.header(n), getHeaders: () => res.headers, getResponseTime: () => res.timeMs });
 const isEmpty = (v) => v == null || (typeof v === 'object' ? Object.keys(v).length === 0 : String(v) === '');`;
 
-function scriptsOf(r, ctx, isRequest = false) {
-  const pre = [];
+function scriptsOf(r, ctx) {
   const post = [];
-  // request vars: set before the placeholders are resolved (collection and
-  // folder vars are plain variables instead)
-  if (isRequest) for (const v of on(r.vars?.req)) pre.push(`vars.set(${js(v.name)}, vars.interpolate(${js(str(v.value))}));`);
   const resVars = on(r.vars?.res);
   const asserts = on(r.assertions);
   if (resVars.length || asserts.length) post.push(RES_SHIM);
@@ -451,7 +450,7 @@ function scriptsOf(r, ctx, isRequest = false) {
   const postScript = commented('post-response script', r.script?.res, ctx);
   const tests = commented('tests', r.tests, ctx);
   return {
-    pre: [pre.join('\n'), preScript].filter(Boolean).join('\n'),
+    pre: preScript,
     post: [post.join('\n'), postScript, tests].filter(Boolean).join('\n'),
   };
 }

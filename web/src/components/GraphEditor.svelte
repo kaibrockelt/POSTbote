@@ -5,10 +5,10 @@
   import PathField from './PathField.svelte';
   import FileEditor from './FileEditor.svelte';
   import { fileDoc } from '../lib/doc.svelte.js';
-  import { parseGraph, serializeGraph, GRAPH_EXT } from '../lib/format.js';
+  import { parseGraph, serializeGraph, parseRequest, GRAPH_EXT } from '../lib/format.js';
   import { allRequests } from '../lib/tree.js';
   import { NODE_TYPES, outsOf, uniqueNodeId, checkGraph } from '../lib/graph.js';
-  import { app, run, cancelRun, select } from '../lib/state.svelte.js';
+  import { app, run, cancelRun, select, contentOf } from '../lib/state.svelte.js';
 
   let { path } = $props();
   const d = fileDoc(path, parseGraph, serializeGraph);
@@ -31,6 +31,8 @@
   let starter = $state('');
 
   const requests = $derived(allRequests(app.files));
+  // declared variables (parameters) of a request, filled from the node input
+  const requestVars = (path) => (path && path in app.files ? parseRequest(contentOf(path)).doc?.variables.filter((v) => v.key) || [] : []);
   const callable = $derived(
     Object.keys(app.files)
       .filter((p) => p.startsWith('workflows/') && p.endsWith(GRAPH_EXT) && p !== path)
@@ -334,7 +336,18 @@
                 <option value="response">whole response {'{ status, headers, body }'}</option>
               </select>
             </label>
-            <p class="hint">A JSON input overrides folder and collection variables of the same name (never environment values). <code>{'{{input.field}}'}</code> works anywhere in the request.</p>
+            {@const params = requestVars(node.request)}
+            {#if params.length}
+              <div class="params">
+                <span class="muted small">Parameters, filled from the input's fields:</span>
+                {#each params as v (v.key)}
+                  <div class="param mono small">{v.key === 'input' ? 'input (sample, replaced by the node input)' : v.key}{#if v.value && v.key !== 'input'} <span class="muted">= {v.value}</span>{/if}</div>
+                {/each}
+              </div>
+            {:else if node.request}
+              <p class="hint">The request declares no variables. Add them in its Variables tab; a JSON input fills those with the same name.</p>
+            {/if}
+            <p class="hint">Only the request's variables are filled, never folder, collection or environment values. <code>{'{{input}}'}</code> / <code>{'{{input.field}}'}</code> read the input directly.</p>
             {#if node.request}<button class="link small" onclick={() => select({ kind: 'request', path: node.request })}>Open request ↗</button>{/if}
           {:else if node.type === 'script'}
             <span class="muted small">Code — <code>input</code> is the incoming value; <code>return</code> the output, <code>throw</code> goes to err</span>
@@ -797,6 +810,16 @@
   .node-link .mono {
     margin-left: auto;
     font-size: 11px;
+  }
+  .params {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .param {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: var(--bg-2);
   }
   .small-mark {
     width: 14px;

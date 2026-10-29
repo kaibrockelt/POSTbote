@@ -12,7 +12,7 @@ Offline-first API client (Postman/Bruno alternative). Collections, environments,
 
 ## Collection format (summary)
 
-`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `runners/**/<name>.runner.yaml`, `workflows/**/<name>.workflow.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > workflow input > folder > collection; configured values may nest `{{vars}}`, runtime/input values never do. Cookies per environment in `.cookies/` (gitignored). Details: `docs/collection-format.md`, `docs/scripting.md`.
+`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `runners/**/<name>.runner.yaml`, `workflows/**/<name>.workflow.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > request vars (`variables:` in the request; a workflow input fills only these) > folder > collection; configured values may nest `{{vars}}`, runtime/input values never do. Cookies per environment in `.cookies/` (gitignored). Details: `docs/collection-format.md`, `docs/scripting.md`.
 
 ## Commands
 

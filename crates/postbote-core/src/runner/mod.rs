@@ -262,12 +262,14 @@ struct State {
     scope_vars: BTreeMap<String, String>,
     /// workflow node input: `{{input}}` / `{{input.field}}` in a called request
     graph_input: Option<Value>,
-    /// top-level fields of a JSON node input: override folder/collection
-    /// variables of a called request, never the environment
-    input_vars: BTreeMap<String, String>,
+    /// top-level fields of a JSON node input: fill the request variables the
+    /// called request declares (nothing else, never the environment)
+    call_fields: BTreeMap<String, String>,
+    /// request variables (declared defaults) of the request being executed
+    req_vars: BTreeMap<String, String>,
     /// workflow call node with "use folder settings" off
     skip_folders: bool,
-    /// graph_input came from the request's own sample inputs (cleared after it)
+    /// graph_input came from the request's own `input` variable (cleared after it)
     input_from_request: bool,
     tests: Vec<TestResult>,
     logs: Vec<LogEntry>,
@@ -312,31 +314,6 @@ struct Prepared {
     post: Vec<(String, String)>,
 }
 
-/// `{"user.name": "ada"}` → `{"user": {"name": "ada"}}`; `_` is the whole input.
-fn inputs_value(inputs: &BTreeMap<String, String>) -> Value {
-    if let Some(whole) = inputs.get("_") {
-        return serde_json::from_str(whole).unwrap_or_else(|_| Value::String(whole.clone()));
-    }
-    fn put(target: &mut Value, path: &[&str], v: &str) {
-        if !target.is_object() {
-            *target = Value::Object(Map::new());
-        }
-        let obj = target.as_object_mut().expect("object");
-        match path {
-            [last] => {
-                obj.insert(last.to_string(), Value::String(v.to_string()));
-            }
-            [first, rest @ ..] => put(obj.entry(first.to_string()).or_insert(Value::Null), rest, v),
-            [] => {}
-        }
-    }
-    let mut root = Value::Object(Map::new());
-    for (key, v) in inputs {
-        put(&mut root, &key.split('.').collect::<Vec<_>>(), v);
-    }
-    root
-}
-
 fn var_text(v: &Value) -> String {
     host::value_to_text(v)
 }
@@ -346,7 +323,8 @@ impl State {
         self.logs.push(LogEntry { level: level.into(), message, source: self.source.clone() });
     }
 
-    /// Variable lookup: runtime vars > data row > environment > folder/collection vars.
+    /// Variable lookup: runtime vars > data row > environment > request vars >
+    /// folder/collection vars.
     fn lookup(&self, name: &str) -> Option<String> {
         self.lookup_src(name).map(|(v, _)| v)
     }
@@ -367,9 +345,13 @@ impl State {
         if let Some(v) = self.env.get(name) {
             return Some((v.clone(), true));
         }
-        // workflow inputs are data like runtime values: never interpolated again
-        if let Some(v) = self.input_vars.get(name) {
-            return Some((v.clone(), false));
+        // request variables: a workflow call fills the declared ones with data
+        // (never interpolated again), else the configured default applies
+        if let Some(default) = self.req_vars.get(name).filter(|_| name != "input") {
+            return Some(match self.call_fields.get(name) {
+                Some(v) => (v.clone(), false),
+                None => (default.clone(), true),
+            });
         }
         if let Some(input) = &self.graph_input {
             if name == "input" {
@@ -521,7 +503,8 @@ impl Engine {
             row: None,
             scope_vars: BTreeMap::new(),
             graph_input: None,
-            input_vars: BTreeMap::new(),
+            call_fields: BTreeMap::new(),
+            req_vars: BTreeMap::new(),
             skip_folders: false,
             input_from_request: false,
             tests: Vec::new(),
@@ -633,6 +616,7 @@ impl Engine {
                 st.graph_input = None;
                 st.input_from_request = false;
             }
+            st.req_vars.clear();
         }
         let (tests, logs) = self.drain();
         res.tests.extend(tests);
@@ -666,13 +650,16 @@ impl Engine {
                 return None;
             }
         };
-        // run on its own: the request's sample inputs stand in for a workflow node input
+        // run on its own: the `input` variable stands in for a workflow node input
         {
             let mut st = self.st.borrow_mut();
-            if st.graph_input.is_none() && !req.inputs.is_empty() {
-                st.graph_input = Some(inputs_value(&req.inputs));
-                st.input_from_request = true;
+            if st.graph_input.is_none() {
+                if let Some(sample) = req.variables.get("input") {
+                    st.graph_input = Some(serde_json::from_str(sample).unwrap_or_else(|_| Value::String(sample.clone())));
+                    st.input_from_request = true;
+                }
             }
+            st.req_vars = req.variables.clone();
         }
         res.name = if req.name.is_empty() {
             path.rsplit('/').next().unwrap_or(path).trim_end_matches(model::REQUEST_EXT).to_string()

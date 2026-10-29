@@ -54,7 +54,7 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
 - **Postman** (branch `feature/import-postman`): collection v2.0/v2.1 plus environment/globals files
   chosen together; folders, order (`seq`), collection/folder/request auth (bearer, basic, apikey;
   oauth2 → bearer with its access token; others inherit with a warning), `:id` path variables →
-  `{{id}}` with collection-variable defaults, raw/urlencoded/formdata/graphql bodies, descriptions →
+  `{{id}}` request variables with Postman's values as defaults, raw/urlencoded/formdata/graphql bodies, descriptions →
   docs/README, scripts as comments; environment values of type `secret` or with secret-like names go
   to the private file. v1 collections are rejected with a hint to export v2.1. Checked against the
   public examples of newman, postman-collection and postman-collection-transformer.
@@ -62,8 +62,8 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
   folders (3.2 `parent` → nested), operations in document order, servers → one environment each
   (`baseUrl`, server variables filled with their defaults, choices in the README), security schemes →
   collection or request auth with `{{token}}`/`{{apiKey}}`/`{{username}}`+`{{password}}` declared in
-  every environment (secrets empty in the private file), path parameters → `{{name}}` collection
-  variables with examples, required query/header params on and optional ones off, bodies from
+  every environment (secrets empty in the private file), path parameters → `{{name}}` request
+  variables with the operation's examples, required query/header params on and optional ones off, bodies from
   examples or generated from schemas (readOnly and recursive properties left out), `$ref` incl.
   external files selected together with the spec, `operationId` kept in the docs for a later sync;
   callbacks/webhooks are skipped with a warning. Checked against the OAI and learn.openapis.org
@@ -79,9 +79,9 @@ Status: researched 2026-10-28; base work started on branch `feature/import`.
 - **Bruno** (branch `feature/import-bruno`): the collection folder (folder picker or zip) or Bruno's
   JSON export; `.bru` files are parsed into the export's shape, so one converter serves both.
   bruno.json name, collection.bru / folder.bru (headers, auth, `vars:pre-request` → variables, docs),
-  `meta.seq` order, `params:path` → `{{name}}` collection variables, all body modes (SPARQL as text),
+  `meta.seq` order, `params:path` and request `vars:pre-request` → request variables, all body modes (SPARQL as text),
   bearer/basic/apikey (oauth2 → `{{token}}`), `environments/*.bru` with `vars:secret` → empty private
   values, `{{process.env.X}}` → `{{X}}` with values from `.env` in the private files. Assertions and
   `vars:post-response` become real tests/scripts (a small `bruRes` shim gives Bruno's parsed
-  `res.body`); request `vars:pre-request` → `vars.set(…)`; `bru.*` scripts and tests stay comments.
+  `res.body`); `bru.*` scripts and tests stay comments.
   gRPC/WebSocket requests are skipped with a warning. Not yet: OpenCollection YAML (Bruno 3.1+).

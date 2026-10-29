@@ -132,9 +132,10 @@ pub struct Request {
     pub scripts: Scripts,
     pub docs: String,
     pub seq: i64,
-    /// sample values for `{{input.x}}` when the request runs on its own
-    /// (a workflow's node input replaces them); `_` = the whole `{{input}}`
-    pub inputs: BTreeMap<String, String>,
+    /// request variables, the request's parameters: defaults for `{{name}}`
+    /// that a workflow call fills from its JSON input; `input` is the sample
+    /// for `{{input}}` when the request runs on its own
+    pub variables: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

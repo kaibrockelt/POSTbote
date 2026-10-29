@@ -9,7 +9,7 @@
   import VarField from './VarField.svelte';
   import CodeSnippets from './CodeSnippets.svelte';
   import { setContext } from 'svelte';
-  import { variableScope, withInputs, inputKeys } from '../lib/vars.js';
+  import { variableScope, withRequestVars, shadowedByEnv } from '../lib/vars.js';
   import { effectiveRequest } from '../lib/effective.js';
   import { fileDoc } from '../lib/doc.svelte.js';
   import { parseRequest, serializeRequest, METHODS } from '../lib/format.js';
@@ -19,9 +19,9 @@
   const d = fileDoc(path, parseRequest, serializeRequest);
   let tab = $state('params');
   let showCode = $state(false);
-  const scope = $derived(withInputs(variableScope(currentFiles(), app.env, path), d.doc));
-  // {{input.x}} placeholders get sample values for runs of this request on its own
-  const inputs = $derived(d.doc ? [...new Set([...inputKeys(d.doc), ...Object.keys(d.doc.inputs || {})])] : []);
+  const baseScope = $derived(variableScope(currentFiles(), app.env, path));
+  const scope = $derived(withRequestVars(baseScope, d.doc));
+  const shadowed = $derived(d.doc ? shadowedByEnv(baseScope, d.doc) : []);
   setContext('vars', () => scope);
   const resolvedUrl = $derived(d.doc ? effectiveRequest(currentFiles(), app.env, path, $state.snapshot(d.doc)).url : '');
 
@@ -32,11 +32,11 @@
     d.doc
       ? [
           { id: 'params', label: 'Params', badge: count(d.doc.params) },
+          { id: 'variables', label: 'Variables', badge: count(d.doc.variables) },
           { id: 'headers', label: 'Headers', badge: count(d.doc.headers) },
           { id: 'body', label: 'Body', badge: d.doc.body.type !== 'none' ? d.doc.body.type : '' },
           { id: 'auth', label: 'Auth', badge: d.doc.auth.type !== 'inherit' ? d.doc.auth.type : '' },
           { id: 'scripts', label: 'Scripts', badge: (d.doc.scripts.pre ? 1 : 0) + (d.doc.scripts.post ? 1 : 0) || '' },
-          ...(inputs.length ? [{ id: 'inputs', label: 'Inputs', badge: inputs.length }] : []),
           { id: 'docs', label: 'Docs' },
         ]
       : [],
@@ -131,28 +131,16 @@
           <AuthEditor bind:auth={d.doc.auth} />
         {:else if tab === 'scripts'}
           <ScriptsEditor bind:scripts={d.doc.scripts} />
-        {:else if tab === 'inputs'}
+        {:else if tab === 'variables'}
+          <KvTable bind:rows={d.doc.variables} toggle={false} keyPlaceholder="Variable" valuePlaceholder="default value" />
           <p class="hint">
-            Sample values for <code>{'{{input…}}'}</code> placeholders, used when you send this request on its own. In a workflow the node's input
-            replaces them.
+            The request's parameters: use them as <code>{'{{name}}'}</code>. They override folder and collection variables; environment values win
+            over them. A workflow fills them from the fields of its JSON input. <code>input</code> is the sample for <code>{'{{input}}'}</code> /
+            <code>{'{{input.x}}'}</code> when you send the request on its own.
           </p>
-          <table class="grid inputs">
-            <tbody>
-              {#each inputs as k (k)}
-                <tr>
-                  <td class="mono">{k === '_' ? 'input (whole value)' : `input.${k}`}</td>
-                  <td>
-                    <input class="mono" value={d.doc.inputs?.[k] ?? ''} oninput={(e) => (d.doc.inputs = { ...d.doc.inputs, [k]: e.currentTarget.value })} placeholder="sample value" />
-                  </td>
-                  <td>
-                    {#if !inputKeys(d.doc).includes(k)}
-                      <button class="icon" title="Not used anymore – remove" onclick={() => { const { [k]: _, ...rest } = d.doc.inputs; d.doc.inputs = rest; }}>✕</button>
-                    {/if}
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
+          {#if shadowed.length}
+            <p class="hint warn">⚠ {shadowed.join(', ')}: set by the environment “{app.env}”, which wins over the request variable.</p>
+          {/if}
         {:else if tab === 'docs'}
           <CodeArea bind:value={d.doc.docs} rows={12} placeholder="Markdown documentation for this request" />
         {/if}
@@ -230,8 +218,8 @@
     flex-direction: column;
     gap: 4px;
   }
-  .inputs input {
-    width: 100%;
+  .hint.warn {
+    color: var(--warn);
   }
   .body-types {
     gap: 14px;

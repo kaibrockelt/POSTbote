@@ -30,7 +30,7 @@ export function parsePostman(inputs) {
   }
   const c = col.json;
   const warnings = new Set();
-  const ctx = { warnings, pathVars: new Map(), dynamic: new Set(), examples: 0, scripts: 0 };
+  const ctx = { warnings, dynamic: new Set(), examples: 0, scripts: 0 };
 
   for (const i of inputs) {
     if (i === col) continue;
@@ -59,13 +59,6 @@ export function parsePostman(inputs) {
   };
 
   walk(c.item, 'requests', result, ctx);
-
-  // :id path variables become {{id}}; their default values become collection variables
-  for (const [key, value] of ctx.pathVars) {
-    const have = result.collection.variables.find((v) => v.key === key);
-    if (!have) result.collection.variables.push(kv(key, value));
-    else if (value && have.value !== value) warnings.add(`Path variable :${key} has different values; kept “${have.value}”`);
-  }
 
   for (const i of inputs) {
     if (!isEnvironment(i.json)) continue;
@@ -117,13 +110,14 @@ function walk(items, dir, result, ctx) {
 function convertRequest(it, ctx) {
   const r = typeof it.request === 'string' ? { url: it.request, method: 'GET' } : it.request;
   const where = `request “${it.name}”`;
-  const { url, params } = convertUrl(r.url, ctx);
+  const { url, params, variables } = convertUrl(r.url);
   const headers = convertHeaders(r.header);
   const body = convertBody(r.body, headers, where, ctx);
   const doc = {
     name: str(it.name) || 'request',
     method: str(r.method || 'GET').toUpperCase(),
     url,
+    variables,
     params,
     headers,
     auth: r.auth ? convertAuth(r.auth, where, ctx) : { type: 'inherit' },
@@ -135,7 +129,10 @@ function convertRequest(it, ctx) {
   return doc;
 }
 
-function convertUrl(u, ctx) {
+// :id path variables become request variables {{id}} with Postman's value as default
+function convertUrl(u) {
+  const variables = [];
+  const declare = (key, value) => variables.some((v) => v.key === key) || variables.push(kv(key, value));
   let raw = '';
   let query = null;
   if (typeof u === 'string') raw = u;
@@ -147,7 +144,7 @@ function convertUrl(u, ctx) {
       raw = `${u.protocol ? `${u.protocol}://` : ''}${host}${u.port ? `:${u.port}` : ''}${path ? `/${path}` : ''}`;
     }
     if (Array.isArray(u.query)) query = u.query.filter(Boolean).map((q) => kv(q.key, q.value, q.disabled));
-    for (const v of u.variable || []) if (v?.key) ctx.pathVars.has(v.key) || ctx.pathVars.set(str(v.key), str(v.value));
+    for (const v of u.variable || []) if (v?.key) declare(str(v.key), v.value);
   }
   // the query lives in params; Postman's raw URL repeats it
   const q = raw.indexOf('?');
@@ -165,10 +162,10 @@ function convertUrl(u, ctx) {
   }
   // /users/:id → /users/{{id}}
   url = url.replace(/(\/):([A-Za-z_][\w-]*)(?=\/|$)/g, (_, slash, name) => {
-    if (!ctx.pathVars.has(name)) ctx.pathVars.set(name, '');
+    declare(name, '');
     return `${slash}{{${name}}}`;
   });
-  return { url, params: query || [] };
+  return { url, params: query || [], variables };
 }
 
 function convertHeaders(h) {

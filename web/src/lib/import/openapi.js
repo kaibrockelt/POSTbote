@@ -27,7 +27,7 @@ export function parseOpenApi(inputs) {
   const warnings = new Set();
   // other selected files can satisfy external $refs (./schemas/pet.yaml#/Pet)
   const docs = new Map(inputs.filter((i) => i.json && typeof i.json === 'object').map((i) => [i.name.split(/[\\/]/).pop(), i.json]));
-  const ctx = { spec, v2, warnings, docs, collectionVars: new Map(), skipped: { callbacks: 0, webhooks: 0 }, incoming: [] };
+  const ctx = { spec, v2, warnings, docs, skipped: { callbacks: 0, webhooks: 0 }, incoming: [] };
 
   const name = String(spec.info?.title || main.name.replace(/\.(json|ya?ml)$/i, '') || 'API');
   const { environments, baseUrl } = convertServers(ctx);
@@ -72,7 +72,7 @@ export function parseOpenApi(inputs) {
     env.values.push(...plain.map((key) => ({ key, value: '', secret: false })), ...secrets.map((key) => ({ key, value: '', secret: true })));
   }
 
-  const variables = [kv('baseUrl', baseUrl), ...[...ctx.collectionVars].map(([k, v]) => kv(k, v))];
+  const variables = [kv('baseUrl', baseUrl)];
   // requests the API sends to you cannot be run from here: they are documented in the README
   const n = ctx.skipped.callbacks + ctx.skipped.webhooks;
   if (n) warnings.add(`${n} callback${n > 1 ? 's/webhooks are' : '/webhook is'} described in the README (requests the API sends to you)`);
@@ -254,6 +254,8 @@ function convertOperation(ctx, path, method, pathItem, op, security) {
   const headers = [];
   const cookies = [];
   let url = '{{baseUrl}}' + path.replace(/\{([^}]+)\}/g, (_, n) => `{{${n}}}`);
+  // path parameters become request variables, the operation's example as default
+  const variables = [];
   let body = { type: 'none', content: '', fields: [] };
   const v2form = [];
 
@@ -261,7 +263,7 @@ function convertOperation(ctx, path, method, pathItem, op, security) {
     const value = exampleOf(ctx, p);
     switch (p.in) {
       case 'path':
-        if (!ctx.collectionVars.has(p.name) || (!ctx.collectionVars.get(p.name) && value)) ctx.collectionVars.set(p.name, value);
+        if (!variables.some((v) => v.key === p.name)) variables.push(kv(p.name, value));
         break;
       case 'query':
         query.push(kv(p.name, value, !p.required));
@@ -306,6 +308,7 @@ function convertOperation(ctx, path, method, pathItem, op, security) {
     name: String(op.summary || op.operationId || where).slice(0, 120),
     method: method.toUpperCase(),
     url,
+    variables,
     params: query,
     headers,
     auth,

@@ -475,8 +475,8 @@ impl Engine {
     fn set_call_input(&self, input: &Data, use_folder: bool) {
         let mut st = self.st.borrow_mut();
         st.graph_input = Some(input.value.clone());
-        // JSON fields override folder/collection variables, never the environment
-        st.input_vars = match &input.value {
+        // JSON fields fill the request variables of the called request
+        st.call_fields = match &input.value {
             Value::Object(o) if input.kind == "json" => o.iter().map(|(k, v)| (k.clone(), var_text(v))).collect(),
             _ => BTreeMap::new(),
         };
@@ -486,7 +486,8 @@ impl Engine {
     fn clear_call_input(&self) {
         let mut st = self.st.borrow_mut();
         st.graph_input = None;
-        st.input_vars.clear();
+        st.call_fields.clear();
+        st.req_vars.clear();
         st.skip_folders = false;
     }
 
