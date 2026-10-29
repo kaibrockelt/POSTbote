@@ -12,7 +12,7 @@ Offline-first API client (Postman/Bruno alternative). Collections, environments,
 
 ## Collection format (summary)
 
-`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `runners/**/<name>.runner.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > folder > collection. Details: `docs/collection-format.md`, `docs/scripting.md`.
+`postbote.yaml`, `requests/**/<name>.req.yaml`, `requests/**/_folder.yaml`, `runners/**/<name>.runner.yaml`, `workflows/**/<name>.workflow.yaml`, `environments/<name>.env.pub` (shared, committed) + `environments/<name>.env` (private, gitignored, overrides; empty private value keeps shared; `env.set()` writes private). Variable lookup: runtime vars > data row > private env > shared env > workflow input > folder > collection; configured values may nest `{{vars}}`, runtime/input values never do. Cookies per environment in `.cookies/` (gitignored). Details: `docs/collection-format.md`, `docs/scripting.md`.
 
 ## Commands
 
@@ -41,6 +41,6 @@ Releases: push tag `vX.Y.Z` → `.github/workflows/release.yml` builds Tauri bun
 
 Full list of planned topics: `docs/plans/roadmap.md`.
 
-`docs/plans/import-export.md` – phase 1: cURL paste import with secret detection, Postman v2.1, OpenAPI. Open questions listed there.
+Import phase 1 is done (cURL/raw HTTP paste, Postman, OpenAPI, `.http`, HAR; `web/src/lib/import/`, one module per format, shared builder and secret handling). Remaining phases in `docs/plans/import-export.md`.
 
 Terminology: request chains over data rows are **runners** (`runners/**/*.runner.yaml`; internally still `workflow`: kind, `Target::Workflow`, `WorkflowEditor`, script object `wf`). **Workflows** are the node-based flows (`workflows/**/*.workflow.yaml`, internally `graph`: `runner/graph.rs`, `Target::Graph`, `GraphEditor`, tab kind `graph`), see `docs/workflows.md`; later steps in `docs/plans/node-workflows.md`.
