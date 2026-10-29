@@ -22,6 +22,9 @@
 
   let canvas = $state();
   let pan = $state({ x: 40, y: 40 });
+  let viewW = $state(800); // visible canvas size (bound to the element)
+  let viewH = $state(500);
+  let navTab = $state('map');
   let selected = $state(null); // { kind: 'node' | 'edge', id | index }
   let drag = null; // node move, pan or new link
   let link = $state(null); // { from, out, x, y } while dragging a new edge
@@ -52,12 +55,83 @@
 
   function addNode(type) {
     const id = uniqueNodeId(d.doc, type);
-    // below the lowest node in view, so new nodes never cover existing ones
-    const x = Math.round((-pan.x + 40) / 10) * 10;
-    const bottom = Math.max(-pan.y, ...d.doc.nodes.map((n) => n.y + nodeHeight(n)));
-    d.doc.nodes.push({ id, type, name: NODE_TYPES[type].label, x, y: Math.round((bottom + 30) / 10) * 10, ...structuredClone(NODE_TYPES[type].init) });
+    // the free spot closest to the middle of what is visible (rings around it)
+    const h = HEAD + 2 * ROW + 8;
+    const cx = -pan.x + viewW / 2 - W / 2;
+    const cy = -pan.y + viewH / 2 - h / 2;
+    const free = (x, y) => !d.doc.nodes.some((n) => x < n.x + W + 20 && x + W + 20 > n.x && y < n.y + nodeHeight(n) + 20 && y + h + 20 > n.y);
+    const visible = (x, y) => x >= -pan.x + 10 && x + W <= -pan.x + viewW - 10 && y >= -pan.y + 10 && y + h <= -pan.y + viewH - 10;
+    let spot = { x: cx, y: cy };
+    // first a free spot that is fully visible, else the nearest free one
+    search: for (const mustSee of [true, false]) {
+      for (let r = 0; r < 8; r++) {
+        for (let i = -r; i <= r; i++) {
+          for (let j = -r; j <= r; j++) {
+            if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
+            const x = cx + i * (W / 2 + 20);
+            const y = cy + j * (h / 2 + 15);
+            if (free(x, y) && (!mustSee || visible(x, y))) {
+              spot = { x, y };
+              break search;
+            }
+          }
+        }
+      }
+    }
+    d.doc.nodes.push({ id, type, name: NODE_TYPES[type].label, x: Math.round(spot.x / 10) * 10, y: Math.round(spot.y / 10) * 10, ...structuredClone(NODE_TYPES[type].init) });
     selected = { kind: 'node', id };
   }
+
+  /** Centres the view on a node and selects it. */
+  function focusNode(n) {
+    pan = { x: Math.round(viewW / 2 - (n.x + W / 2)), y: Math.round(viewH / 2 - (n.y + nodeHeight(n) / 2)) };
+    selected = { kind: 'node', id: n.id };
+  }
+
+  // ---- navigator: minimap of all nodes plus the visible area
+  const view = $derived({ x: -pan.x, y: -pan.y, w: viewW, h: viewH });
+  const bounds = $derived.by(() => {
+    const boxes = [view, ...(d.doc?.nodes || []).map((n) => ({ x: n.x, y: n.y, w: W, h: nodeHeight(n) }))];
+    const x1 = Math.min(...boxes.map((b) => b.x)) - 60;
+    const y1 = Math.min(...boxes.map((b) => b.y)) - 60;
+    const x2 = Math.max(...boxes.map((b) => b.x + b.w)) + 60;
+    const y2 = Math.max(...boxes.map((b) => b.y + b.h)) + 60;
+    return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+  });
+  let minimap = $state();
+  let mapDrag = null;
+  const mapPoint = (e) => {
+    const p = minimap.createSVGPoint();
+    p.x = e.clientX;
+    p.y = e.clientY;
+    return p.matrixTransform(minimap.getScreenCTM().inverse());
+  };
+  function mapDown(e) {
+    const p = mapPoint(e);
+    const inside = p.x >= view.x && p.x <= view.x + view.w && p.y >= view.y && p.y <= view.y + view.h;
+    // grab the rectangle where it was hit, or centre it on the click
+    mapDrag = inside ? { dx: p.x - view.x, dy: p.y - view.y } : { dx: view.w / 2, dy: view.h / 2 };
+    mapMove(e);
+    window.addEventListener('pointermove', mapMove);
+    window.addEventListener('pointerup', () => ((mapDrag = null), window.removeEventListener('pointermove', mapMove)), { once: true });
+  }
+  function mapMove(e) {
+    if (!mapDrag) return;
+    const p = mapPoint(e);
+    pan = { x: Math.round(-(p.x - mapDrag.dx)), y: Math.round(-(p.y - mapDrag.dy)) };
+  }
+
+  const GROUPS = ['Start', 'Actions', 'Control', 'Files', 'End'];
+  const nodeGroups = $derived(
+    Object.entries(NODE_TYPES)
+      .sort((a, b) => GROUPS.indexOf(a[1].group) - GROUPS.indexOf(b[1].group))
+      .map(([type, t]) => ({
+        type,
+        label: t.label,
+        nodes: (d.doc?.nodes || []).filter((n) => n.type === type).sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, undefined, { numeric: true })),
+      }))
+      .filter((g) => g.nodes.length),
+  );
 
   function removeSelected() {
     if (!selected) return;
@@ -164,7 +238,7 @@
         <p class="hint">Drag from an output dot onto another node to connect. Select and press Delete to remove.</p>
       </div>
 
-      <div class="canvas" bind:this={canvas} onpointerdown={startPan} role="application" aria-label="Workflow canvas">
+      <div class="canvas" bind:this={canvas} bind:clientWidth={viewW} bind:clientHeight={viewH} onpointerdown={startPan} role="application" aria-label="Workflow canvas">
         <div class="world" style="transform: translate({pan.x}px, {pan.y}px)">
           <!-- large enough to receive clicks on edges anywhere; the group puts 0,0 at the world origin -->
           <svg class="edges" width="8000" height="8000"><g transform="translate(4000 4000)">
@@ -218,6 +292,7 @@
         </div>
       </div>
 
+      <div class="side">
       <div class="panel">
         {#if node}
           {@const t = NODE_TYPES[node.type]}
@@ -370,6 +445,51 @@
           {/if}
         {/if}
       </div>
+
+      <div class="navigator">
+        <div class="nav-tabs">
+          <button class:on={navTab === 'map'} onclick={() => (navTab = 'map')}>Map</button>
+          <button class:on={navTab === 'nodes'} onclick={() => (navTab = 'nodes')}>Nodes <span class="muted">{d.doc.nodes.length}</span></button>
+        </div>
+        {#if navTab === 'map'}
+          <svg class="minimap" bind:this={minimap} viewBox="{bounds.x} {bounds.y} {bounds.w} {bounds.h}" preserveAspectRatio="xMidYMid meet" onpointerdown={mapDown} role="img" aria-label="Map of the workflow">
+            {#each d.doc.edges as e, i (i)}
+              {@const a = byId(e.from)}
+              {@const b = byId(e.to)}
+              {#if a && b}<line x1={outPos(a, e.out).x} y1={outPos(a, e.out).y} x2={inPos(b).x} y2={inPos(b).y} class="map-edge" />{/if}
+            {/each}
+            {#each d.doc.nodes as n (n.id)}
+              <rect
+                x={n.x}
+                y={n.y}
+                width={W}
+                height={nodeHeight(n)}
+                rx="10"
+                class="map-node"
+                class:sel={selected?.kind === 'node' && selected.id === n.id}
+                class:ok={stepOf[n.id] && !stepOf[n.id].error}
+                class:failed={stepOf[n.id]?.error}
+                class:warn={issues.nodes[n.id] && !stepOf[n.id]}
+              />
+            {/each}
+            <rect x={view.x} y={view.y} width={view.w} height={view.h} class="map-view" />
+          </svg>
+        {:else}
+          <div class="node-list">
+            {#each nodeGroups as g (g.type)}
+              <div class="group">{g.label}</div>
+              {#each g.nodes as n (n.id)}
+                <button class="node-link" class:sel={selected?.kind === 'node' && selected.id === n.id} onclick={() => focusNode(n)}>
+                  {#if issues.nodes[n.id]}<span class="warn-mark small-mark">!</span>{/if}
+                  {n.name || n.id}
+                  <span class="muted mono">{n.id}</span>
+                </button>
+              {/each}
+            {/each}
+          </div>
+        {/if}
+      </div>
+      </div>
     </div>
   </div>
 {/if}
@@ -398,7 +518,7 @@
       grid-template-columns: 130px minmax(0, 1fr);
       grid-template-rows: minmax(420px, 1fr) auto;
     }
-    .panel {
+    .side {
       grid-column: 1 / -1;
     }
   }
@@ -576,12 +696,112 @@
   .port.out.err {
     border-color: var(--bad);
   }
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+  }
   .panel {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
     overflow: auto;
     font-size: 13px;
+  }
+  .navigator {
+    flex: none;
+    height: 210px;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  .nav-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-tabs button {
+    flex: 1;
+    border: none;
+    border-radius: 0;
+    background: var(--bg-1);
+    font-size: 12px;
+    padding: 4px;
+  }
+  .nav-tabs button.on {
+    background: var(--bg);
+    font-weight: 600;
+  }
+  .minimap {
+    flex: 1;
+    width: 100%;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .map-edge {
+    stroke: var(--fg-3);
+    stroke-width: 6;
+  }
+  .map-node {
+    fill: var(--bg-3);
+    stroke: var(--border);
+    stroke-width: 4;
+  }
+  .map-node.ok {
+    fill: var(--ok-bg);
+    stroke: var(--ok);
+  }
+  .map-node.failed {
+    fill: var(--bad-bg);
+    stroke: var(--bad);
+  }
+  .map-node.warn {
+    stroke: var(--warn);
+  }
+  .map-node.sel {
+    stroke: var(--accent);
+    stroke-width: 10;
+  }
+  .map-view {
+    fill: color-mix(in srgb, var(--accent) 12%, transparent);
+    stroke: var(--accent);
+    stroke-width: 8;
+    cursor: move;
+  }
+  .node-list {
+    flex: 1;
+    overflow: auto;
+    padding: 4px 6px;
+    font-size: 12.5px;
+  }
+  .node-link {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: none;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  .node-link:hover,
+  .node-link.sel {
+    background: var(--bg-2);
+  }
+  .node-link .mono {
+    margin-left: auto;
+    font-size: 11px;
+  }
+  .small-mark {
+    width: 14px;
+    height: 14px;
+    font-size: 10px;
   }
   .panel label:not(.check) {
     display: flex;
