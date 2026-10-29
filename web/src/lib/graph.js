@@ -56,7 +56,8 @@ export function checkGraph(doc, exists) {
       const child = doc.nodes.find((c) => c.id === n.child);
       if (!n.child) add(n.id, 'Choose the node to run for every item.');
       else if (!child) add(n.id, `Loop node ${n.child} not found.`);
-      else if (outgoing(child.id).length) add(child.id, 'Runs inside “For each”: its own connections are not followed. For several steps per item, loop over a Run workflow node.');
+      else if (outgoing(child.id).length) add(child.id, 'Runs inside “For each”: its own connections are not followed (select and delete them). For several steps per item, loop over a Run workflow node.');
+      else if (incoming(child.id).length) add(child.id, 'Runs inside “For each”, which passes it every item: a connection into it runs it once more on its own (select and delete it).');
     }
     if (n.type === 'setVar' && !String(n.variable || '').trim()) add(n.id, 'Set the variable name.');
     if (n.type === 'filter' && !String(n.expr || '').trim()) add(n.id, 'Set the filter expression.');

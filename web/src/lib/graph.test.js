@@ -33,4 +33,7 @@ test('workflow checks before running', () => {
   assert.match(nodes.lonely.join(), /filter expression/);
   assert.equal(nodes.e, undefined);
   assert.deepEqual(checkGraph({ nodes: [], edges: [] }, () => true).general.length, 1);
+  // a connection into a loop child runs it a second time
+  const into = checkGraph({ nodes: doc.nodes.slice(0, 4), edges: [...doc.edges.slice(0, 2), { from: 'r', out: 'out', to: 'c' }] }, () => true);
+  assert.match(into.nodes.c.join(), /runs it once more/);
 });

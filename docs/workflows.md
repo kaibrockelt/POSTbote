@@ -62,7 +62,7 @@ sample (JSON is parsed, so `{{input.field}}` works too).
 | `return` | Ends the workflow with its input as result. |
 
 Branches: several edges from one port run one after another; a node with several inputs runs once per
-input — use `merge` to wait for all of them. A node run by `forEach` does not follow its own edges; for
+input — use `merge` to wait for all of them. A node run by `forEach` has no ports in the editor and does not follow its own edges; for
 several steps per item, loop over a `workflow` node. The editor marks such problems (and missing requests,
 unconnected nodes, …) with a dashed yellow border before you run.
 

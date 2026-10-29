@@ -16,9 +16,11 @@
   const W = 200; // node width
   const HEAD = 30;
   const ROW = 22;
-  const nodeHeight = (n) => HEAD + Math.max(1, outsOf(n).length) * ROW + 8;
+  // nodes run by a For each: no ports, the loop feeds them and collects their output
+  const loopOf = (n) => d.doc?.nodes.find((f) => f.type === 'forEach' && f.child === n.id);
+  const nodeHeight = (n) => HEAD + (loopOf(n) ? 1 : Math.max(1, outsOf(n).length)) * ROW + 8;
   const inPos = (n) => ({ x: n.x, y: n.y + HEAD / 2 });
-  const outPos = (n, port) => ({ x: n.x + W, y: n.y + HEAD + 12 + Math.max(0, outsOf(n).indexOf(port)) * ROW });
+  const outPos = (n, port) => ({ x: n.x + W, y: n.y + HEAD + 12 + (loopOf(n) ? 0 : Math.max(0, outsOf(n).indexOf(port)) * ROW) });
 
   let canvas = $state();
   let pan = $state({ x: 40, y: 40 });
@@ -55,8 +57,13 @@
     return { x: e.clientX - r.left - pan.x, y: e.clientY - r.top - pan.y };
   };
 
-  function addNode(type) {
+  function addNode(type, at) {
     const id = uniqueNodeId(d.doc, type);
+    if (at) {
+      d.doc.nodes.push({ id, type, name: NODE_TYPES[type].label, x: Math.round(at.x / 10) * 10, y: Math.round(at.y / 10) * 10, ...structuredClone(NODE_TYPES[type].init) });
+      selected = { kind: 'node', id };
+      return;
+    }
     // the free spot closest to the middle of what is visible (rings around it)
     const h = HEAD + 2 * ROW + 8;
     const cx = -pan.x + viewW / 2 - W / 2;
@@ -82,6 +89,37 @@
     }
     d.doc.nodes.push({ id, type, name: NODE_TYPES[type].label, x: Math.round(spot.x / 10) * 10, y: Math.round(spot.y / 10) * 10, ...structuredClone(NODE_TYPES[type].init) });
     selected = { kind: 'node', id };
+  }
+
+  // ---- palette: a click places the node in view, dragging drops it where the pointer is
+  let ghost = $state(null); // { type, x, y, over } while dragging a new node (screen coordinates)
+  let paletteDrag = null;
+  function paletteDown(e, type) {
+    if (e.button !== 0) return;
+    e.preventDefault(); // no text selection while dragging
+    paletteDrag = { type, sx: e.clientX, sy: e.clientY };
+    window.addEventListener('pointermove', paletteMove);
+    window.addEventListener('pointerup', paletteUp, { once: true });
+  }
+  function paletteMove(e) {
+    if (!paletteDrag) return;
+    if (!ghost && Math.hypot(e.clientX - paletteDrag.sx, e.clientY - paletteDrag.sy) < 4) return;
+    const r = canvas.getBoundingClientRect();
+    const over = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    ghost = { type: paletteDrag.type, x: e.clientX, y: e.clientY, over };
+  }
+  function paletteUp(e) {
+    window.removeEventListener('pointermove', paletteMove);
+    const type = paletteDrag?.type;
+    paletteDrag = null;
+    if (!ghost) return addNode(type); // a click
+    const over = ghost.over;
+    ghost = null;
+    // the pointer holds the node by the middle of its head
+    if (over) {
+      const p = world(e);
+      addNode(type, { x: p.x - W / 2, y: p.y - HEAD / 2 });
+    }
   }
 
   /** Centres the view on a node and selects it. */
@@ -192,7 +230,7 @@
       // dropped on a node: connect (starters have no input, no duplicates, no self links)
       const id = document.elementFromPoint(e.clientX, e.clientY)?.closest('.node')?.dataset.id;
       const target = id && byId(id);
-      if (target && id !== link.from && !NODE_TYPES[target.type]?.starter && !d.doc.edges.some((x) => x.from === link.from && x.out === link.out && x.to === id)) {
+      if (target && id !== link.from && !NODE_TYPES[target.type]?.starter && !loopOf(target) && !d.doc.edges.some((x) => x.from === link.from && x.out === link.out && x.to === id)) {
         d.doc.edges.push({ from: link.from, out: link.out, to: id });
       }
       link = null;
@@ -234,10 +272,10 @@
         {#each ['Start', 'Actions', 'Control', 'Files', 'End'] as group (group)}
           <div class="group">{group}</div>
           {#each Object.entries(NODE_TYPES).filter(([, t]) => t.group === group) as [type, t] (type)}
-            <button class="small add" onclick={() => addNode(type)}>＋ {t.label}</button>
+            <button class="small add" onpointerdown={(e) => paletteDown(e, type)} onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), addNode(type))}>＋ {t.label}</button>
           {/each}
         {/each}
-        <p class="hint">Drag from an output dot onto another node to connect. Select and press Delete to remove.</p>
+        <p class="hint">Click a node type or drag it onto the canvas. Drag from an output dot onto another node to connect. Select and press Delete to remove.</p>
       </div>
 
       <div class="canvas" bind:this={canvas} bind:clientWidth={viewW} bind:clientHeight={viewH} onpointerdown={startPan} role="application" aria-label="Workflow canvas">
@@ -267,6 +305,7 @@
           {#each d.doc.nodes as n (n.id)}
             {@const t = NODE_TYPES[n.type]}
             {@const st = stepOf[n.id]}
+            {@const loop = loopOf(n)}
             <div
               class="node"
               class:sel={selected?.kind === 'node' && selected.id === n.id}
@@ -278,12 +317,15 @@
               style="left: {n.x}px; top: {n.y}px; width: {W}px; height: {nodeHeight(n)}px"
             >
               <div class="node-head" role="button" tabindex="-1" onpointerdown={(e) => startMove(e, n)}>
-                {#if !t?.starter}<span class="port in" title="input{n.input ? ` (${n.input})` : ''}"></span>{/if}
+                {#if !t?.starter && !loop}<span class="port in" title="input{n.input ? ` (${n.input})` : ''}"></span>{/if}
                 {#if issues.nodes[n.id]}<span class="warn-mark" title={issues.nodes[n.id].join('\n')}>!</span>{/if}
                 <span class="node-title">{n.name || t?.label || n.type}</span>
                 <span class="node-type">{t?.label || n.type}</span>
               </div>
-              {#each outsOf(n) as out, i (out)}
+              {#if loop}
+                <div class="loop-row" style="top: {HEAD + 1}px" title="run by {loop.name || loop.id} for every item">↻ runs once per item</div>
+              {/if}
+              {#each loop ? [] : outsOf(n) as out, i (out)}
                 <div class="out-row" style="top: {HEAD + 1 + i * ROW}px">
                   <span class="out-label" class:err={out === 'err'} class:taken={st?.port === out}>{out}</span>
                   <span class="port out" class:err={out === 'err'} role="button" tabindex="-1" title="drag to connect" onpointerdown={(e) => startLink(e, n, out)}></span>
@@ -293,6 +335,12 @@
           {/each}
         </div>
       </div>
+
+      {#if ghost}
+        <div class="node ghost" class:off={!ghost.over} style="left: {ghost.x - W / 2}px; top: {ghost.y - HEAD / 2}px; width: {W}px">
+          <div class="node-head"><span class="node-title">{NODE_TYPES[ghost.type].label}</span></div>
+        </div>
+      {/if}
 
       <div class="side">
       <div class="panel">
@@ -327,7 +375,7 @@
                 {#each requests as r (r.path)}<option value={r.path}>{r.method} · {r.name} — {r.path.slice(9)}</option>{/each}
               </select>
             </label>
-            <label class="check"><input type="checkbox" bind:checked={node.useFolder} /> use folder settings (variables, headers, auth, scripts)</label>
+            <label class="check"><input type="checkbox" checked={node.useFolder !== false} onchange={(e) => (node.useFolder = e.currentTarget.checked)} /> use folder settings (variables, headers, auth, scripts)</label>
             <label class="check"><input type="checkbox" checked={node.failOnError !== false} onchange={(e) => (node.failOnError = e.currentTarget.checked)} /> HTTP status ≥ 400 or a failed test goes to err</label>
             <label>
               <span>Output</span>
@@ -609,6 +657,20 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     cursor: default;
   }
+  .node.ghost {
+    position: fixed;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0.85;
+    border-color: var(--accent);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  }
+  .node.ghost.off {
+    opacity: 0.45;
+  }
+  .node.ghost .node-head {
+    border-bottom: 0;
+  }
   .node.sel {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
@@ -671,6 +733,18 @@
     font-size: 10.5px;
     color: var(--fg-3);
     white-space: nowrap;
+  }
+  .loop-row {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    height: 22px;
+    line-height: 22px;
+    font-size: 11px;
+    color: var(--fg-3);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .out-row {
     position: absolute;
