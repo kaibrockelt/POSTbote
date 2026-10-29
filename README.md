@@ -1,44 +1,119 @@
-# POSTBote
+<p align="center">
+  <img src="desktop/icons/128x128@2x.png" width="128" height="128" alt="POSTBote logo">
+</p>
 
-An offline-first API client in the spirit of Postman and Bruno, built for digital sovereignty:
-**no cloud, no account, no telemetry.** Collections, environments, runners and scripts are plain
-text files that live in your folder (or your browser) and can be versioned with git.
+<h1 align="center">POSTBote</h1>
 
-- Collections with nested folders, inherited headers/variables/auth/scripts
-- Environments as dotenv files: shared values in `<name>.env.pub` (committed) overlaid by private
-  secrets in `<name>.env` (gitignored)
-- Runners: request chains with data-driven iterations (CSV/JSON), conditions, `goto`/`stop`
-- Workflows: node-based flows on a canvas — call requests, compute with JavaScript, switch, loop, read and
-  write files, call other workflows ([docs](docs/workflows.md))
-- JavaScript scripting (QuickJS) before/after requests and before/after runners: read, iterate, write files
-- Import: paste cURL or a raw HTTP request into a new request; Postman collections (v2.x, with
-  environments), OpenAPI 3.x / Swagger 2.0, `.http` files (JetBrains/VS Code), HAR and Bruno collections as new collections,
-  secrets moved into private environment values
-- Desktop app (Tauri, system webview — no Electron), local browser mode, multi-user Docker server, CLI for CI
+<p align="center">
+  <b>The offline-first API client.</b> No cloud, no account, no telemetry.<br>
+  Collections, environments, runners and workflows are plain text files you version with git.
+</p>
+
+<p align="center">
+  <a href="https://github.com/kaibrockelt/POSTbote/releases/latest"><img src="https://img.shields.io/github/v/release/kaibrockelt/POSTbote?label=release" alt="Latest release"></a>
+  <a href="https://github.com/kaibrockelt/POSTbote/actions/workflows/ci.yml"><img src="https://github.com/kaibrockelt/POSTbote/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License: MIT or Apache-2.0"></a>
+</p>
+
+<p align="center">
+  <a href="#download">Download</a> ·
+  <a href="#features">Features</a> ·
+  <a href="docs/collection-format.md">Collection format</a> ·
+  <a href="docs/scripting.md">Scripting</a> ·
+  <a href="docs/workflows.md">Workflows</a>
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workflow-dark.png">
+  <img src="docs/screenshots/workflow-light.png" alt="A workflow: read a CSV, filter admins, call a request for each, save the result">
+</picture>
+
+POSTBote is an API client in the spirit of Postman and Bruno, built for digital sovereignty. Your
+collections live in a folder on your disk (or in your browser), secrets stay in gitignored files, and
+nothing ever leaves your machine unless you send it.
+
+## Features
+
+- **Plain text, git-friendly:** one YAML file per request, folders as folders, small diffs. Opening a
+  file never rewrites it.
+- **Environments without leaks:** shared values in `<name>.env.pub` (committed), secrets in
+  `<name>.env` (gitignored) — same names, private wins.
+- **Variables that make sense:** collection, folder and request variables, environments, runtime
+  values from scripts; `{{vars}}` highlighted with their source and value.
+- **Tests and scripts in JavaScript** (ES2023, sandboxed QuickJS): `test()`/`expect()`, `vars`, `env`,
+  files, CSV, `postbote.sendRequest` — before and after every request, folder and runner.
+- **Runners:** chain requests over CSV/JSON data rows, with conditions, `goto` and `stop`.
+- **Workflows:** node-based flows on a canvas — requests as functions, JavaScript, switch, filter, loops,
+  files, sub-workflows.
+- **Import everything:** paste cURL or raw HTTP; import Postman, OpenAPI 3 / Swagger 2, Bruno, `.http`
+  (JetBrains/VS Code) and HAR. Secrets move into private environment values automatically.
+- **Runs anywhere:** native desktop app (Tauri, no Electron), local mode in your browser, a multi-user
+  team server in Docker, and a CLI for CI pipelines.
+- **No CORS headaches:** requests are sent by the Rust backend, with cookies per environment.
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/request-dark.png">
+        <img src="docs/screenshots/request-light.png" alt="A request with its variables, sent, with passing tests">
+      </picture>
+      <p align="center"><b>Requests</b> — variables, tests and the resolved URL at a glance</p>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/runner-dark.png">
+        <img src="docs/screenshots/runner-light.png" alt="A runner result: two iterations over CSV rows, all tests passed">
+      </picture>
+      <p align="center"><b>Runners</b> — request chains over data rows</p>
+    </td>
+  </tr>
+</table>
+
+## Download
+
+<!-- download links: updated by scripts/bump-version.sh -->
+Latest release: **[v0.3.0](https://github.com/kaibrockelt/POSTbote/releases/tag/v0.3.0)** ([all releases](https://github.com/kaibrockelt/POSTbote/releases))
+
+| Platform | Desktop app | CLI / server |
+| --- | --- | --- |
+| macOS (universal) | [.dmg](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_universal.dmg) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-macos-universal.tar.gz) |
+| Windows (x64) | [Installer (.exe)](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_x64-setup.exe) · [MSI](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_x64_en-US.msi) | [.zip](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-windows-x86_64.zip) |
+| Linux (x86_64) | [AppImage](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_amd64.AppImage) · [.deb](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_amd64.deb) · [.rpm](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote-0.3.0-1.x86_64.rpm) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-linux-x86_64.tar.gz) |
+| Linux (arm64) | – | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-linux-arm64.tar.gz) |
+| Docker (amd64 + arm64) | – | `ghcr.io/kaibrockelt/postbote` |
+<!-- /download links -->
+
+The builds are not signed yet. On macOS, right-click the app and choose **Open** the first time (or run
+`xattr -dr com.apple.quarantine /Applications/POSTBote.app`); on Windows, choose **More info → Run
+anyway** in SmartScreen. Linux needs WebKitGTK (`libwebkit2gtk-4.1`), Windows the WebView2 runtime
+(preinstalled on Windows 10/11).
 
 ## Run it
 
 ### Desktop app
+
+Install it from [Download](#download), or build it yourself:
 
 ```bash
 cd web && npm ci && npm run build && cd ..
 cargo run --release -p postbote-desktop
 ```
 
-A native window opens. On first start a short wizard asks where your collections live – by default
+On first start a short wizard asks where your collections live – by default
 `~/Documents/POSTBote` (the platform's documents folder on Windows/Linux). Every collection is one
 folder in there and shows up automatically; folders elsewhere (e.g. inside a project repository) can
 be added as well. The choice is stored in the user config directory (`postbote/config.json`) and can be
 changed later in Settings (gear icon in the top bar).
 
 Installers for macOS/Windows/Linux are built with the Tauri CLI (`cargo install tauri-cli`,
-then `cargo tauri build` inside `desktop/`). Linux needs WebKitGTK (`libwebkit2gtk-4.1`), Windows the
-WebView2 runtime (preinstalled on Windows 10/11).
+then `cargo tauri build` inside `desktop/`).
 
 ### Local mode in your browser (no webview needed)
 
 ```bash
-cargo run --release -p postbote-server -- local
+postbote local                                  # CLI binary from the release
+cargo run --release -p postbote-server -- local # or from source
 ```
 
 Starts on `127.0.0.1` with a random port and opens your browser with a one-time access token. Same
@@ -165,6 +240,8 @@ Pushing a version tag builds everything on GitHub Actions and creates a **draft 
 scripts/bump-version.sh 0.2.0
 git commit -am "Release 0.2.0" && git tag -a v0.2.0 -m v0.2.0 && git push --follow-tags
 ```
+
+The script also points the [download links](#download) in this README at the new version.
 
 - Desktop app: macOS `.dmg` (universal), Windows `.exe`/`.msi`, Linux `.AppImage`/`.deb`/`.rpm`
 - `postbote` CLI/server binaries for macOS, Windows and Linux (static, x86_64 + arm64)

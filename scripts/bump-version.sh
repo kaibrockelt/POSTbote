@@ -11,6 +11,8 @@ perl -0pi -e "s/(\[workspace\.package\]\nversion = )\"[^\"]*\"/\${1}\"$v\"/" Car
 perl -pi -e "s/\"version\": \"[^\"]*\"/\"version\": \"$v\"/ if \$. < 6" desktop/tauri.conf.json
 (cd web && npm version "$v" --no-git-tag-version --allow-same-version > /dev/null)
 cargo update --workspace --quiet
+# download links in the README, between the "download links" markers
+perl -0pi -e 's{(<!-- download links.*?<!-- /download links -->)}{ (my $b = $1) =~ s/\d+\.\d+\.\d+/'"$v"'/g; $b }se' README.md
 
 echo "version set to $v. Next:"
 echo "  git commit -am \"Release $v\" && git tag -a v$v -m v$v && git push --follow-tags"

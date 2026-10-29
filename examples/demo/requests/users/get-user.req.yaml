@@ -1,6 +1,8 @@
 name: Get user
 method: GET
 url: "{{baseUrl}}/anything/users/{{name}}"
+variables:
+  name: ada
 params:
   - key: fields
     value: name,role

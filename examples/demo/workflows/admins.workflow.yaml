@@ -1,0 +1,15 @@
+name: Look up admins
+nodes:
+  - { id: start, type: manual, name: Start, x: 20, y: 40 }
+  - { id: load, type: loadFile, name: Read users.csv, path: data/users.csv, parse: csv, x: 260, y: 40 }
+  - { id: admins, type: filter, name: Only admins, expr: item.role === 'admin', x: 500, y: 40 }
+  - { id: each, type: forEach, name: Every admin, input: json, child: get, x: 20, y: 220 }
+  - { id: get, type: request, name: Get user, input: json, request: requests/users/get-user.req.yaml, x: 20, y: 400 }
+  - { id: save, type: writeFile, name: Save admins.json, path: out/admins.json, format: json, x: 260, y: 220 }
+  - { id: done, type: return, name: Done, x: 500, y: 220 }
+edges:
+  - { from: start, out: out, to: load }
+  - { from: load, out: out, to: admins }
+  - { from: admins, out: out, to: each }
+  - { from: each, out: out, to: save }
+  - { from: save, out: out, to: done }
