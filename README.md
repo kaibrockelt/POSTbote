@@ -51,7 +51,16 @@ docker compose up -d
 docker compose run --rm postbote user add alice
 ```
 
-Open `http://localhost:8080`. Every user is isolated. By default a user's collections (including
+Open `http://localhost:8080` and sign in. Users and passwords (bcrypt) live in `/data/users.json` and are
+managed with `postbote user add|remove|list`; running `user add` for an existing user sets a new password.
+Users can change their own password and sign out under Settings. Sessions are signed cookies valid for
+14 days and tied to the password: changing it or removing the user ends all sessions of that user. After
+5 failed sign-ins for a user name (20 per address) further attempts are locked for 30 s, doubling up to
+15 min. Serve it via HTTPS (reverse proxy) and set `POSTBOTE_SECURE_COOKIES=true`. With
+`POSTBOTE_AUTH=header` your sign-in proxy (oauth2-proxy, Authelia, …) authenticates users instead; then
+only the proxy may reach the container.
+
+Every user is isolated. By default a user's collections (including
 environments) are stored **in their browser only** (IndexedDB) and can be exported/imported as zip.
 Storing a collection on the server is an explicit opt-in per collection, and the admin can disable it
 altogether (`POSTBOTE_NO_SERVER_STORAGE=true`). For browser-stored collections the server only receives
@@ -144,7 +153,8 @@ Security model:
   header, so other websites cannot drive the API (no CORS is ever allowed).
 - **Scripts** only see the files of their own collection (paths are sandboxed, symlinks out of the
   collection are rejected) and have no network access other than `postbote.sendRequest`.
-- **Team server:** bcrypt-hashed users or an auth proxy, signed session cookies, per-user storage,
+- **Team server:** bcrypt-hashed users or an auth proxy, signed session cookies tied to the password,
+  a limit for failed sign-ins, per-user storage,
   optional SSRF protection, run/memory/concurrency limits.
 
 ## Releases
@@ -172,6 +182,11 @@ cargo test                                  # core + server tests
 cargo run -p postbote-server -- serve --addr 127.0.0.1:8080 --auth none --data ./data
 cd web && npm run dev                       # UI with hot reload, proxies /api to :8080
 ```
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Please follow the
+[Code of Conduct](CODE_OF_CONDUCT.md) and report security issues privately ([SECURITY.md](SECURITY.md)).
 
 ## License
 

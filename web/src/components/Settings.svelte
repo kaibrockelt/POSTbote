@@ -2,6 +2,7 @@
   // App-wide settings (gear in the top bar). Sections are added here as
   // global settings appear; collection settings stay in postbote.yaml.
   import { app, setCollectionsDir, pickFolder, fail, toast } from '../lib/state.svelte.js';
+  import { api } from '../lib/api.js';
 
   let { onclose } = $props();
   const setup = app.info.setup;
@@ -10,6 +11,28 @@
   let dir = $state(initialDir);
   let busy = $state(false);
   const changed = $derived(dir.trim() !== initialDir);
+
+  // team server: the signed-in user; passwords only with --auth local
+  const server = app.info.mode === 'server';
+  const ownPassword = server && app.info.auth === 'local';
+  let current = $state('');
+  let next = $state('');
+  let repeat = $state('');
+  let pwBusy = $state(false);
+  const pwError = $derived(next && next.length < 8 ? 'At least 8 characters' : repeat && repeat !== next ? 'Passwords do not match' : '');
+
+  async function changePassword() {
+    pwBusy = true;
+    try {
+      await api.changePassword(current, next);
+      current = next = repeat = '';
+      toast('Password changed. Other sessions are signed out.');
+    } catch (err) {
+      fail(err);
+    } finally {
+      pwBusy = false;
+    }
+  }
 
   async function browse() {
     const picked = await pickFolder(dir);
@@ -53,6 +76,23 @@
       </section>
     {/if}
 
+    {#if server}
+      <section>
+        <h4>Account</h4>
+        <p class="muted">Signed in as <strong>{app.info.user}</strong>{app.info.auth === 'header' ? ' (via your sign-in proxy)' : ''}</p>
+        {#if ownPassword}
+          <div class="pw">
+            <input type="password" bind:value={current} placeholder="Current password" autocomplete="current-password" aria-label="Current password" />
+            <input type="password" bind:value={next} placeholder="New password" autocomplete="new-password" aria-label="New password" />
+            <input type="password" bind:value={repeat} placeholder="Repeat new password" autocomplete="new-password" aria-label="Repeat new password" />
+            <button type="button" onclick={changePassword} disabled={pwBusy || !current || !next || next !== repeat || !!pwError}>Change password</button>
+          </div>
+          {#if pwError}<p class="hint warn">{pwError}</p>{/if}
+          <p class="hint">Changing the password signs out your other sessions.</p>
+        {/if}
+      </section>
+    {/if}
+
     <section>
       <h4>About</h4>
       <p class="muted">
@@ -82,5 +122,18 @@
   }
   .link.small {
     align-self: flex-start;
+  }
+  .pw {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr auto;
+    gap: 6px;
+  }
+  @media (max-width: 640px) {
+    .pw {
+      grid-template-columns: 1fr;
+    }
+  }
+  .hint.warn {
+    color: var(--warn);
   }
 </style>

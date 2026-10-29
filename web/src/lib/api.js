@@ -18,6 +18,9 @@ async function call(method, url, body, opts = {}) {
     headers['Content-Type'] = 'text/plain; charset=utf-8';
   }
   const res = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', signal: opts.signal });
+  // the session ended (signed out elsewhere, password changed, user removed):
+  // back to the sign-in screen; login and password change report wrong passwords
+  if (res.status === 401 && url !== '/api/login' && url !== '/api/password') location.reload();
   if (!res.ok) {
     let msg = res.statusText;
     try {
@@ -37,6 +40,7 @@ export const api = {
   info: () => call('GET', '/api/info'),
   login: (username, password) => call('POST', '/api/login', { username, password }),
   logout: () => call('POST', '/api/logout', {}),
+  changePassword: (current, next) => call('POST', '/api/password', { current, next }),
   workspaces: () => call('GET', '/api/workspaces'),
   createWorkspace: (body) => call('POST', '/api/workspaces', body),
   deleteWorkspace: (id) => call('DELETE', `/api/workspaces/${id}`),

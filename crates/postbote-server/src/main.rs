@@ -129,7 +129,8 @@ async fn main() -> Result<()> {
             let app = postbote_server::router(cfg)?;
             let listener = tokio::net::TcpListener::bind(&addr).await.with_context(|| format!("bind {addr}"))?;
             println!("postbote team server listening on http://{}", listener.local_addr()?);
-            axum::serve(listener, app).with_graceful_shutdown(shutdown_signal()).await?;
+            // the peer address feeds the limit for failed sign-ins
+            axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).with_graceful_shutdown(shutdown_signal()).await?;
             Ok(())
         }
         Cmd::Run { dir, path, env, json } => {

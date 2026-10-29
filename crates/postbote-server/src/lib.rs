@@ -52,6 +52,8 @@ pub struct AppState {
     pub secret: Vec<u8>,
     pub runs: tokio::sync::Semaphore,
     pub registry_lock: tokio::sync::Mutex<()>,
+    pub users: auth::UsersCache,
+    pub login_limiter: auth::LoginLimiter,
 }
 
 impl AppState {
@@ -70,6 +72,8 @@ pub fn router(cfg: Config) -> anyhow::Result<Router> {
         cfg,
         secret,
         registry_lock: tokio::sync::Mutex::new(()),
+        users: auth::UsersCache::default(),
+        login_limiter: auth::LoginLimiter::default(),
     });
     Ok(api::routes(state.clone()).merge(assets::routes()).layer(axum::middleware::from_fn_with_state(state.clone(), api::entry)).with_state(state))
 }

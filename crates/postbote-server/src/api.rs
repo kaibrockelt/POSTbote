@@ -18,7 +18,7 @@ use postbote_core::runner::{self, RunOptions, RunOutput, Target};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::auth::{self, User};
+use crate::auth::{self, PeerIp, User};
 use crate::{AppState, AuthMode, Mode, workspaces};
 
 const MAX_BODY: usize = 32 << 20;
@@ -52,6 +52,7 @@ pub fn routes(_state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/api/info", get(info))
         .route("/api/login", post(login))
         .route("/api/logout", post(logout))
+        .route("/api/password", post(change_password))
         .route("/api/workspaces", get(list_workspaces).post(create_workspace))
         .route("/api/workspaces/{id}", axum::routing::delete(delete_workspace))
         .route("/api/workspaces/{id}/trash", post(trash_workspace))
@@ -192,20 +193,75 @@ struct Login {
     password: String,
 }
 
-async fn login(State(s): State<Arc<AppState>>, Json(l): Json<Login>) -> ApiResult<Response> {
+/// Checks a password under the sign-in limit; the hash on success.
+async fn verify_password(s: &AppState, data_dir: &std::path::Path, user: &str, password: String, ip: Option<std::net::IpAddr>) -> ApiResult<String> {
+    let wait = s.login_limiter.wait(user, ip);
+    if wait > 0 {
+        let mins = wait.div_ceil(60);
+        return Err(err(
+            StatusCode::TOO_MANY_REQUESTS,
+            format!("Too many failed sign-ins. Try again in {}.", if wait < 60 { format!("{wait} s") } else { format!("{mins} min") }),
+        ));
+    }
+    let (dir, u) = (data_dir.to_path_buf(), user.to_string());
+    match blocking(move || Ok(auth::check_password(&dir, &u, &password))).await? {
+        Some(hash) => {
+            s.login_limiter.succeeded(user);
+            Ok(hash)
+        }
+        None => {
+            s.login_limiter.failed(user, ip);
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            Err(err(StatusCode::UNAUTHORIZED, "invalid user name or password"))
+        }
+    }
+}
+
+fn session_response(s: &AppState, user: &str, hash: &str) -> Response {
+    let cookie = auth::session_cookie(&auth::make_session(&s.secret, user, hash), auth::session_max_age(), s.cfg.secure_cookies);
+    ([(header::SET_COOKIE, cookie)], Json(json!({ "user": user }))).into_response()
+}
+
+async fn login(State(s): State<Arc<AppState>>, PeerIp(ip): PeerIp, Json(l): Json<Login>) -> ApiResult<Response> {
     let Mode::Server { data_dir, auth: AuthMode::Local, .. } = &s.cfg.mode else {
         return Err(err(StatusCode::BAD_REQUEST, "password login is not enabled"));
     };
-    let dir = data_dir.clone();
     let user = l.username.trim().to_string();
-    let u2 = user.clone();
-    let ok = blocking(move || Ok(auth::check_password(&dir, &u2, &l.password))).await?;
-    if !ok {
-        tokio::time::sleep(Duration::from_millis(400)).await;
-        return Err(err(StatusCode::UNAUTHORIZED, "invalid user name or password"));
+    let hash = verify_password(&s, data_dir, &user, l.password, ip).await?;
+    Ok(session_response(&s, &user, &hash))
+}
+
+#[derive(Deserialize)]
+struct PasswordChange {
+    current: String,
+    next: String,
+}
+
+/// Changes the signed-in user's password. All other sessions of the user end;
+/// this one gets a new cookie.
+async fn change_password(State(s): State<Arc<AppState>>, User(user): User, PeerIp(ip): PeerIp, Json(p): Json<PasswordChange>) -> ApiResult<Response> {
+    let Mode::Server { data_dir, auth: AuthMode::Local, .. } = &s.cfg.mode else {
+        return Err(err(StatusCode::BAD_REQUEST, "passwords are not managed by POSTBote here"));
+    };
+    if p.next.chars().count() < 8 {
+        return Err(err(StatusCode::BAD_REQUEST, "the new password needs at least 8 characters"));
     }
-    let cookie = auth::session_cookie(&auth::make_session(&s.secret, &user), auth::session_max_age(), s.cfg.secure_cookies);
-    Ok(([(header::SET_COOKIE, cookie)], Json(json!({ "user": user }))).into_response())
+    verify_password(&s, data_dir, &user, p.current, ip)
+        .await
+        .map_err(|e| if e.0 == StatusCode::UNAUTHORIZED { err(StatusCode::UNAUTHORIZED, "the current password is wrong") } else { e })?;
+    let _guard = s.registry_lock.lock().await;
+    let (dir, u, next) = (data_dir.clone(), user.clone(), p.next);
+    let hash = blocking(move || {
+        let mut users = auth::load_users(&dir)?;
+        anyhow::ensure!(users.contains_key(&u), "user {u} no longer exists");
+        let hash = bcrypt::hash(next, 12)?;
+        users.insert(u, hash.clone());
+        auth::save_users(&dir, &users)?;
+        Ok(hash)
+    })
+    .await?;
+    s.users.forget();
+    Ok(session_response(&s, &user, &hash))
 }
 
 async fn logout(State(s): State<Arc<AppState>>) -> Response {
