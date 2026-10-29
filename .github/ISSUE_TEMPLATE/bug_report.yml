@@ -1,0 +1,51 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A minimal request, runner or workflow file helps a lot. Remove tokens and other secrets!
+      placeholder: |
+        1. Create a request with …
+        2. Send it …
+        3. See …
+    validations:
+      required: true
+  - type: dropdown
+    id: variant
+    attributes:
+      label: Where do you run POSTBote?
+      options:
+        - Desktop app
+        - Local browser mode (postbote local)
+        - Team server (Docker)
+        - CLI (postbote run)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown under Settings → About
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and browser
+      placeholder: macOS 26, Safari / Windows 11 / Ubuntu 24.04, Firefox
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or logs
+      render: text
