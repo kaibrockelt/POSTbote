@@ -73,14 +73,14 @@ nothing ever leaves your machine unless you send it.
 ## Download
 
 <!-- download links: updated by scripts/bump-version.sh -->
-Latest release: **[v0.3.0](https://github.com/kaibrockelt/POSTbote/releases/tag/v0.3.0)** ([all releases](https://github.com/kaibrockelt/POSTbote/releases))
+Latest release: **[v0.4.0](https://github.com/kaibrockelt/POSTbote/releases/tag/v0.4.0)** ([all releases](https://github.com/kaibrockelt/POSTbote/releases))
 
 | Platform | Desktop app | CLI / server |
 | --- | --- | --- |
-| macOS (universal) | [.dmg](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_universal.dmg) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-macos-universal.tar.gz) |
-| Windows (x64) | [Installer (.exe)](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_x64-setup.exe) · [MSI](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_x64_en-US.msi) | [.zip](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-windows-x86_64.zip) |
-| Linux (x86_64) | [AppImage](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_amd64.AppImage) · [.deb](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote_0.3.0_amd64.deb) · [.rpm](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/POSTBote-0.3.0-1.x86_64.rpm) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-linux-x86_64.tar.gz) |
-| Linux (arm64) | – | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.3.0/postbote-v0.3.0-linux-arm64.tar.gz) |
+| macOS (universal) | [.dmg](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote_0.4.0_universal.dmg) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/postbote-v0.4.0-macos-universal.tar.gz) |
+| Windows (x64) | [Installer (.exe)](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote_0.4.0_x64-setup.exe) · [MSI](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote_0.4.0_x64_en-US.msi) | [.zip](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/postbote-v0.4.0-windows-x86_64.zip) |
+| Linux (x86_64) | [AppImage](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote_0.4.0_amd64.AppImage) · [.deb](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote_0.4.0_amd64.deb) · [.rpm](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/POSTBote-0.4.0-1.x86_64.rpm) | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/postbote-v0.4.0-linux-x86_64.tar.gz) |
+| Linux (arm64) | – | [.tar.gz](https://github.com/kaibrockelt/POSTbote/releases/download/v0.4.0/postbote-v0.4.0-linux-arm64.tar.gz) |
 | Docker (amd64 + arm64) | – | `ghcr.io/kaibrockelt/postbote` |
 <!-- /download links -->
 
